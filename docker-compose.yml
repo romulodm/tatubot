@@ -1,0 +1,48 @@
+services:
+  mongo:
+    image: mongo:7
+    volumes: [mongo_data:/data/db]
+    ports: ["27017:27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      retries: 20
+
+  # Opcional: LLM local. Depois de subir, baixe os modelos:
+  #   docker compose exec ollama ollama pull qwen2.5:7b
+  #   docker compose exec ollama ollama pull nomic-embed-text
+  ollama:
+    image: ollama/ollama
+    profiles: ["llm"]
+    volumes: [ollama_data:/root/.ollama]
+    ports: ["11434:11434"]
+    environment:
+      # contexto maior que o padrão; sem isso o Ollama trunca o prompt sem avisar
+      OLLAMA_CONTEXT_LENGTH: "16384"
+
+  web:
+    build: .
+    depends_on:
+      mongo: { condition: service_healthy }
+    ports: ["3000:3000"]
+    volumes: [repos_data:/data/repos]
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: repobot
+      JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-em-producao-0123456789}
+      REPOS_DIR: /data/repos
+      WORKER_MODE: inline
+      # sem HTTPS local, cookies precisam aceitar http
+      COOKIE_INSEGURO: "1"
+      LLM_PROVIDER: ${LLM_PROVIDER:-local}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-ollama}
+      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-qwen2.5:7b}
+      LLM_EMBED_MODEL: ${LLM_EMBED_MODEL:-}
+      EMBED_PREFIX_DOC: ${EMBED_PREFIX_DOC:-}
+      EMBED_PREFIX_QUERY: ${EMBED_PREFIX_QUERY:-}
+
+volumes:
+  mongo_data:
+  ollama_data:
+  repos_data:

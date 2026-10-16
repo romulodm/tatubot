@@ -1,0 +1,341 @@
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+  Tokens
+  ------
+  Preto de verdade como fundo (como no Grok Bot), uma superfície fria um tom
+  acima, texto em giz levemente quente e um único acento azul-sinal reservado
+  ao que está VIVO: o bot trabalhando, a trilha de leitura e as citações.
+*/
+:root {
+  color-scheme: dark;
+  --preto: #000000;
+  --superficie: #16171a;
+  --superficie-2: #1e2024;
+  --linha: #2b2d32;
+  --linha-forte: #3d4047;
+  --giz: #ecebe6;
+  --cinza: #8d9097;
+  --cinza-escuro: #5d6068;
+  --sinal: #8fb3ff;
+  --sinal-fundo: rgba(143, 179, 255, 0.1);
+  --perigo: #ff8f8f;
+  --ok: #9ee6b4;
+
+  --fonte: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* escala modular 1.25 a partir de 16px */
+  --t-xs: 0.8rem;
+  --t-sm: 0.875rem;
+  --t-md: 1rem;
+  --t-lg: 1.25rem;
+  --t-xl: 1.563rem;
+  --t-2xl: 2.441rem;
+  --t-3xl: 3.815rem;
+  --t-hero: clamp(3.4rem, 9vw, 7.6rem);
+
+  --raio-pill: 999px;
+  --raio-caixa: 18px;
+  --raio-peq: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--preto);
+  color: var(--giz);
+  font-family: var(--fonte);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-optical-sizing: auto;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--sinal);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--sinal);
+  color: var(--preto);
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
+
+/* ---------- botões ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 44px;
+  padding: 0 1.25rem;
+  border-radius: var(--raio-pill);
+  border: 1px solid transparent;
+  font-size: var(--t-md);
+  font-weight: 560;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-primario {
+  background: var(--giz);
+  color: var(--preto);
+}
+.btn-primario:hover:not(:disabled) {
+  background: #ffffff;
+}
+.btn-contorno {
+  background: transparent;
+  border-color: var(--linha-forte);
+}
+.btn-contorno:hover:not(:disabled) {
+  border-color: var(--giz);
+}
+.btn-fantasma {
+  background: transparent;
+  color: var(--cinza);
+  padding: 0 0.75rem;
+}
+.btn-fantasma:hover:not(:disabled) {
+  color: var(--giz);
+}
+.btn-peq {
+  height: 34px;
+  padding: 0 0.9rem;
+  font-size: var(--t-sm);
+}
+.btn-perigo:hover:not(:disabled) {
+  color: var(--perigo);
+  border-color: var(--perigo);
+}
+
+/* ---------- formulários ---------- */
+
+.campo {
+  display: grid;
+  gap: 0.4rem;
+}
+.campo > span {
+  font-size: var(--t-sm);
+  color: var(--cinza);
+}
+.campo small {
+  color: var(--cinza-escuro);
+  font-size: var(--t-xs);
+}
+.entrada {
+  width: 100%;
+  background: var(--superficie);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-peq);
+  padding: 0.7rem 0.9rem;
+  font-size: var(--t-md);
+  transition: border-color 0.15s;
+}
+.entrada:hover {
+  border-color: var(--linha-forte);
+}
+.entrada:focus {
+  outline: none;
+  border-color: var(--sinal);
+}
+textarea.entrada {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+
+.erro-form {
+  color: var(--perigo);
+  font-size: var(--t-sm);
+  margin: 0;
+}
+
+/* ---------- avatar ---------- */
+
+.avatar {
+  display: inline-flex;
+  flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--superficie-2);
+}
+.avatar svg {
+  display: block;
+}
+
+/* ---------- status vivo ---------- */
+
+.pulso {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sinal);
+  flex: none;
+  animation: pulso 1.4s ease-in-out infinite;
+}
+@keyframes pulso {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--t-xs);
+  color: var(--cinza);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-pill);
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+.selo-pronto {
+  color: var(--ok);
+  border-color: rgba(158, 230, 180, 0.3);
+}
+.selo-erro {
+  color: var(--perigo);
+  border-color: rgba(255, 143, 143, 0.35);
+}
+.selo-vivo {
+  color: var(--sinal);
+  border-color: rgba(143, 179, 255, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---------- marca ---------- */
+
+.marca {
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  font-variation-settings: "wdth" 90;
+}
+.marca-colchete {
+  color: var(--sinal);
+  font-family: var(--mono);
+  font-weight: 400;
+  margin: 0 0.05em;
+}
+
+/* ---------- citações e markdown ---------- */
+
+.chip-citacao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35em;
+  height: 1.35em;
+  padding: 0 0.3em;
+  margin: 0 0.15em;
+  border-radius: 6px;
+  background: var(--sinal-fundo);
+  color: var(--sinal);
+  font-family: var(--mono);
+  font-size: 0.72em;
+  font-weight: 600;
+  text-decoration: none;
+  vertical-align: 0.15em;
+  transition: background 0.15s;
+}
+.chip-citacao:hover {
+  background: var(--sinal);
+  color: var(--preto);
+}
+
+.md {
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol {
+  margin: 0 0 0.85rem;
+}
+.md ul,
+.md ol {
+  padding-left: 1.25rem;
+}
+.md li {
+  margin: 0.25rem 0;
+}
+.md h4 {
+  margin: 1.1rem 0 0.4rem;
+  font-size: var(--t-md);
+  font-weight: 650;
+}
+.md code {
+  background: var(--superficie-2);
+  border-radius: 5px;
+  padding: 0.08em 0.35em;
+}
+.md-codigo {
+  margin: 0 0 0.85rem;
+  padding: 0.9rem 1rem;
+  background: #0b0c0e;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-peq);
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.md-codigo code {
+  background: none;
+  padding: 0;
+}

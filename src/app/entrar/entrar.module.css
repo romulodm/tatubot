@@ -1,0 +1,50 @@
+.pagina {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+.topo {
+  padding: 18px clamp(16px, 4vw, 56px);
+}
+.centro {
+  display: grid;
+  place-items: center;
+  padding: 24px 16px 80px;
+}
+.caixa {
+  width: 100%;
+  max-width: 400px;
+}
+.titulo {
+  margin: 0 0 0.5rem;
+  font-size: var(--t-2xl);
+  line-height: 1;
+  font-weight: 640;
+  letter-spacing: -0.035em;
+  font-variation-settings: "wdth" 82;
+}
+.sub {
+  margin: 0 0 2rem;
+  color: var(--cinza);
+}
+.form {
+  display: grid;
+  gap: 1.1rem;
+}
+.form button {
+  margin-top: 0.4rem;
+}
+.trocar {
+  margin-top: 1.5rem;
+  color: var(--cinza);
+  font-size: var(--t-sm);
+}
+.trocar button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--giz);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
