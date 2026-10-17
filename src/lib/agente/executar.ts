@@ -4,6 +4,9 @@ import { db, agora } from "../db";
 import { ErroPermanente } from "../erros";
 import { log } from "../log";
 import { buscar, type Resultado } from "../busca/buscar";
+import { analisarConsulta, type Consulta } from "../busca/consulta";
+import { promptConversa, respostaConversaLocal } from "./conversa";
+import { fraseDoAssunto, respostaExtrativa } from "./extrativo";
 import { chat, estimarTokens, llmDisponivel, type MensagemChat } from "../llm/chat";
 import type { Execucao, Mensagem, ModoBot, Repositorio } from "../tipos";
 import { validarCitacoes, type Fonte } from "./citacoes";
@@ -68,6 +71,19 @@ export async function responder(p: PayloadMensagem, correlationId: string) {
     }
   };
 
+  // Roteamento: conversa ("oi", "valeu") não dispara busca nenhuma.
+  const nomesRepos = repos.map((r) => `${r.ghOwner}/${r.ghNome}`);
+  const anterior = [...p.historico].reverse().find((h) => h.autor === "usuario")?.conteudo ?? "";
+  let consulta = analisarConsulta(p.conteudo);
+  if (consulta.intencao === "conversa") {
+    await responderConversa();
+    return;
+  }
+  // Pergunta de continuação ("e quem chama essa função?") herda o assunto da anterior.
+  if (anterior && /\b(ele|ela|isso|esse|essa|este|esta|dele|dela|nele|nela|disso|desse|dessa|deste|desta|mesmo|mesma|la|ali)\b/i.test(p.conteudo)) {
+    consulta = analisarConsulta(`${anterior} ${p.conteudo}`);
+  }
+
   if (!repos.length) {
     await finalizar("Este bot ainda não tem repositórios. Vincule um repositório na configuração do bot e pergunte de novo.", [], []);
     return;
@@ -91,39 +107,62 @@ export async function responder(p: PayloadMensagem, correlationId: string) {
 
   // ---------- modos ----------
 
-  async function modoExtrativo() {
-    await trilha(`Buscando no código: "${resumir(p.conteudo)}"`);
+  async function responderConversa() {
+    passo("llm", "roteador", { intencao: "conversa" }, "mensagem sem pergunta sobre o código; sem busca", Date.now());
+    if (!llmDisponivel()) {
+      exec.modo = "extrativo";
+      await finalizar(respostaConversaLocal(p.conteudo, p.bot, nomesRepos, false), [], []);
+      return;
+    }
     const t0 = Date.now();
-    const { resultados } = await buscar({ repoIds: repos.map((r) => r._id), consulta: p.conteudo, k: 6 });
-    passo("busca", null, { consulta: p.conteudo }, `${resultados.length} trechos`, t0);
-    await trilha(descreverAchados(resultados));
-    return { texto: textoExtrativo(resultados), fontes: fontesDe(resultados) };
+    const mensagens: MensagemChat[] = [{ role: "system", content: promptConversa(p.bot, nomesRepos) }, ...historico(), { role: "user", content: p.conteudo }];
+    const r = await chat({ mensagens, aoToken, maxTokens: 300 });
+    contar(r.uso, mensagens, r.conteudo);
+    passo("llm", null, { conversa: true }, r.conteudo, t0);
+    // Sem fontes: qualquer citação que o modelo inventar é removida.
+    const v = validarCitacoes(r.conteudo, []);
+    await finalizar(v.texto, [], v.removidas);
+  }
+
+  async function modoExtrativo() {
+    await trilha(`Buscando ${fraseDoAssunto(consulta)}`);
+    const t0 = Date.now();
+    const saida = await buscar({ repoIds: repos.map((r) => r._id), consulta, k: consulta.intencao === "localizar" ? 16 : 10 });
+    passo("busca", null, { conceitos: consulta.conceitos.map((c) => c.termos) }, `${saida.resultados.length} trechos`, t0);
+    await trilha(descreverAchados(saida.resultados));
+    const primeira = !p.historico.some((h) => h.autor === "bot");
+    return { texto: respostaExtrativa(saida, primeira), fontes: fontesDe(saida.resultados) };
   }
 
   async function modoPipeline() {
-    await trilha(`Buscando no código: "${resumir(p.conteudo)}"`);
+    await trilha(`Buscando ${fraseDoAssunto(consulta)}`);
     let t0 = Date.now();
-    // A pergunta atual + a última fala do usuário dão contexto a "e essa função?"
-    const anterior = [...p.historico].reverse().find((h) => h.autor === "usuario")?.conteudo ?? "";
     // Passo 1 (opcional no context.md): o LLM traduz a pergunta em termos
     // prováveis do código. Ajuda muito quando a pergunta é em português e o código em inglês.
     const termos = await reescreverConsulta(p.conteudo, anterior);
     if (termos) await trilha(`Procurando por ${termos.split(" ").slice(0, 6).join(", ")}`);
-    const consulta = `${p.conteudo}\n${termos}\n${anterior}`.slice(0, 1200);
-    const { resultados } = await buscar({ repoIds: repos.map((r) => r._id), consulta, k: 6, grafo: true });
-    passo("busca", null, { consulta: p.conteudo }, resultados.map((r) => `${r.chunk.path}:L${r.chunk.linhaInicio}`).join(", "), t0);
+    const comExtras: Consulta = analisarConsulta(consulta.original, termos ? termos.split(" ") : []);
+    const saida = await buscar({ repoIds: repos.map((r) => r._id), consulta: comExtras, k: 8, grafo: true });
+    const resultados = saida.resultados;
+    passo("busca", null, { conceitos: comExtras.conceitos.map((c) => c.palavra), termos }, resultados.map((r) => `${r.chunk.path}:L${r.chunk.linhaInicio}`).join(", "), t0);
     await trilha(descreverAchados(resultados));
 
+    const foco =
+      consulta.intencao === "localizar"
+        ? "A pessoa quer saber ONDE está: responda com a lista de arquivos relevantes e o papel de cada um, em uma linha cada."
+        : "Explique o que o código faz, citando as linhas.";
     const mensagens: MensagemChat[] = [
-      { role: "system", content: promptSistema(p.bot, "pipeline", repos.map((r) => `${r.ghOwner}/${r.ghNome}`)) },
+      { role: "system", content: promptSistema(p.bot, "pipeline", nomesRepos) },
       ...historico(),
-      { role: "user", content: `Trechos do código:\n\n${blocoTrechos(resultados)}\n\nPergunta: ${p.conteudo}` },
+      {
+        role: "user",
+        content: `Trechos do código (podem incluir trechos pouco relevantes: ignore-os):\n\n${blocoTrechos(resultados)}\n\n${foco}\nSe os trechos não respondem, diga que não encontrou.${saida.faltando.length ? ` Nada foi encontrado sobre: ${saida.faltando.join(", ")}.` : ""}\n\nPergunta: ${p.conteudo}`,
+      },
     ];
     await trilha("Escrevendo a resposta");
     t0 = Date.now();
     const r = await chat({ mensagens, aoToken, maxTokens: 1500 });
-    exec.tokensEntrada += r.uso.entrada || mensagens.reduce((s, m) => s + estimarTokens(String(m.content ?? "")), 0);
-    exec.tokensSaida += r.uso.saida || estimarTokens(r.conteudo);
+    contar(r.uso, mensagens, r.conteudo);
     passo("llm", null, { mensagens: mensagens.length }, `${r.conteudo.length} caracteres`, t0);
     return { texto: r.conteudo, fontes: fontesDe(resultados) };
   }
@@ -231,23 +270,4 @@ function descreverAchados(rs: Resultado[]) {
   return `Encontrei ${rs.length} trechos em ${arquivos.size} arquivo${arquivos.size > 1 ? "s" : ""}`;
 }
 
-// Sem LLM: resposta montada só com o que a busca achou, ainda com citações válidas.
-function textoExtrativo(rs: Resultado[]): string {
-  if (!rs.length) return "Não encontrei nada relacionado a isso no código indexado. Tente usar nomes de funções, arquivos ou termos que aparecem no código.";
-  const itens = rs.slice(0, 5).map((r) => {
-    const c = r.chunk;
-    const nome = `\`${(c.simbolo ?? c.path.split("/").pop()!).replace(/`/g, "").slice(0, 80)}\``;
-    const tipo = { funcao: "função", classe: "classe", metodo: "método", modulo: "trecho de módulo", secao_doc: "seção" }[c.tipo];
-    return `- ${nome}, ${tipo} em \`${c.path}\` [${c.path}:L${c.linhaInicio}-L${c.linhaFim}]${resumoDoTrecho(c.conteudo).replace(/`/g, "")}`;
-  });
-  return `Estes são os trechos mais relevantes que encontrei:\n\n${itens.join("\n")}\n\nSem um modelo de linguagem configurado eu só aponto onde está o código. Configure \`LLM_PROVIDER=openai_compat\` para respostas explicadas.`;
-}
-
-function resumoDoTrecho(conteudo: string) {
-  const comentario = conteudo.match(/^\s*(?:\/\/|\*|\/\*\*?|#)\s*([^*\n][^\n]{10,140})/m)?.[1];
-  if (comentario) return `: ${comentario.trim().replace(/\*\/$/, "")}`;
-  return "";
-}
-
-const resumir = (s: string) => (s.length > 70 ? s.slice(0, 67) + "..." : s).replace(/\s+/g, " ");
 const capitalizar = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

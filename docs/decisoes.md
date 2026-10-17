@@ -19,3 +19,8 @@ de propósito do desenho de dois serviços do `context.md`.
 | 2026-10-16 | `git ls-files` para listar arquivos | Respeita o `.gitignore` sem reimplementar o parser. |
 | 2026-10-16 | Polling curto do Mongo no SSE em vez de change streams | Change streams exigem replica set; o MVP roda com um `mongod` simples. |
 | 2026-10-16 | Projeção do indexador = a própria coleção `repositorios` | Num processo só não há o que projetar. O tombstone vira "documento não existe": eventos de repo removido são descartados. |
+| 2026-10-16 | Roteador de intenção antes da busca (`conversa`, `localizar`, `explicar`) | "Oi, como vai?" disparava busca e devolvia trechos aleatórios. Conversa agora é respondida sem busca (modelo de resposta sem LLM; LLM sem contexto de código quando há LLM). |
+| 2026-10-16 | Pergunta vira conceitos com glossário PT→EN; relevância por cobertura ponderada | A busca casava "autenticação" com a política de privacidade em português. Agora cada palavra de assunto vira um conceito com sinônimos do código (auth, login, session...), pesado pela raridade; só ficam trechos que cobrem tanto quanto o melhor e com nota acima de 35% da maior. |
+| 2026-10-16 | Terceiro ranking no RRF: conceitos no caminho do arquivo | O nome da pasta e do arquivo é a melhor pista para "onde fica". Segmentos dinâmicos (`[locale]`) são ignorados. |
+| 2026-10-16 | Prior por tipo de arquivo (traduções, testes, migrações, docs) | Raramente são a resposta, a menos que a pergunta fale deles. |
+| 2026-10-16 | Resposta extrativa agrupada por arquivo, separando "é do assunto" de "também usa" | Para "onde fica", o que importa é o arquivo; quem só importa o componente vai numa linha à parte. |

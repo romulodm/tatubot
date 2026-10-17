@@ -76,7 +76,7 @@ interface ResultadoBusca {
   linhaInicio: number;
   linhaFim: number;
   viaGrafo: boolean;
-  scores: { vetorial: number | null; textual: number | null; rrf: number; posVetorial: number | null; posTextual: number | null };
+  scores: { vetorial: number | null; textual: number | null; caminho: number | null; rrf: number; cobertura: number; final: number; posVetorial: number | null; posTextual: number | null; posCaminho: number | null };
 }
 
 const MOTIVOS: Record<string, string> = {
@@ -210,7 +210,7 @@ function DetalheRepo({ id, aoMudar, aoRemover }: { id: string; aoMudar: () => Pr
 
       <details className={s.bloco}>
         <summary>Testar a busca</summary>
-        <p className={s.meta}>Mostra o ranking que o bot recebe: posição na busca vetorial, na busca textual e a fusão (RRF).</p>
+        <p className={s.meta}>Mostra o ranking que o bot recebe: posição nas buscas vetorial, textual e por caminho, quanto da pergunta cada trecho cobre e a nota final.</p>
         <form onSubmit={buscar} className={s.formBusca}>
           <input className="entrada" value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="ex.: onde o token é verificado" />
           <button className="btn btn-contorno btn-peq" disabled={buscando}>
@@ -231,7 +231,9 @@ function DetalheRepo({ id, aoMudar, aoRemover }: { id: string; aoMudar: () => Pr
                     <th>Trecho</th>
                     <th>Vetorial</th>
                     <th>Textual</th>
-                    <th>RRF</th>
+                    <th>Caminho</th>
+                    <th>Cobertura</th>
+                    <th>Final</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -248,7 +250,9 @@ function DetalheRepo({ id, aoMudar, aoRemover }: { id: string; aoMudar: () => Pr
                       </td>
                       <td>{r.scores.posVetorial ? `#${r.scores.posVetorial} (${r.scores.vetorial?.toFixed(2)})` : "—"}</td>
                       <td>{r.scores.posTextual ? `#${r.scores.posTextual} (${r.scores.textual?.toFixed(1)})` : "—"}</td>
-                      <td>{r.viaGrafo ? "—" : r.scores.rrf.toFixed(4)}</td>
+                      <td>{r.scores.posCaminho ? `#${r.scores.posCaminho}` : "—"}</td>
+                      <td>{Math.round(r.scores.cobertura * 100)}%</td>
+                      <td>{r.viaGrafo ? "—" : r.scores.final.toFixed(4)}</td>
                     </tr>
                   ))}
                 </tbody>

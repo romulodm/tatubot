@@ -37,3 +37,12 @@ describe("fontes sobrepostas", () => {
     expect(r.citacoes[0]).toMatchObject({ linhaInicio: 201, linhaFim: 320 });
   });
 });
+
+describe("caminhos com rota dinâmica", () => {
+  it("aceita colchetes no caminho", () => {
+    const f = { ...fonte, path: "app/[locale]/admin/page.tsx", linhaInicio: 1, linhaFim: 60 };
+    const r = validarCitacoes("veja [app/[locale]/admin/page.tsx:L1-L60].", [f]);
+    expect(r.texto).toBe("veja [[1]].");
+    expect(r.citacoes).toHaveLength(1);
+  });
+});

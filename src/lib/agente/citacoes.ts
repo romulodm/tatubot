@@ -5,7 +5,8 @@ import type { Citacao } from "../tipos";
 export type Fonte = Citacao;
 
 // Aceita [src/a.ts:L10-L20], [src/a.ts:10-20], [src/a.ts:L10] e a mesma coisa entre crases.
-const REGEX = /\[([^\[\]\n`]+?):L?(\d+)(?:\s*[-–]\s*L?(\d+))?\]|`([^`\n\s]+?):L(\d+)(?:\s*[-–]\s*L?(\d+))?`/g;
+// O caminho pode ter colchetes de rota dinâmica: [app/[locale]/page.tsx:L1-L9].
+const REGEX = /\[((?:[^\[\]\n`]|\[[^\[\]\n`]*\])+?):L?(\d+)(?:\s*[-–]\s*L?(\d+))?\]|`([^`\n\s]+?):L(\d+)(?:\s*[-–]\s*L?(\d+))?`/g;
 
 export interface ResultadoCitacoes {
   texto: string;

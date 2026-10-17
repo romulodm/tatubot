@@ -5,6 +5,7 @@ import { texto } from "@/lib/validar";
 import { exigirUsuario } from "@/lib/auth/sessao";
 import { botDoUsuario, conversaDoUsuario } from "@/lib/recursos";
 import { publicar } from "@/lib/fila/fila";
+import { analisarConsulta } from "@/lib/busca/consulta";
 import { limitar } from "@/lib/limite";
 import { mensagemPublica } from "@/lib/mensagens";
 import type { PayloadMensagem } from "@/lib/agente/executar";
@@ -38,7 +39,8 @@ export const POST = rota<P>(async (req, { params, correlationId }) => {
   const resposta: Mensagem = { ...base, _id: randomUUID(), autor: "bot", conteudo: "", status: "pendente", criadoEm: new Date(t.getTime() + 1) };
   await col.insertMany([pergunta, resposta]);
 
-  const titulo = c.titulo === "Nova conversa" ? conteudo.replace(/\s+/g, " ").slice(0, 60) : c.titulo;
+  // "Oi, tudo bem?" não serve de título; espera a primeira pergunta de verdade.
+  const titulo = c.titulo === "Nova conversa" && analisarConsulta(conteudo).intencao !== "conversa" ? conteudo.replace(/\s+/g, " ").slice(0, 60) : c.titulo;
   await d.collection<Conversa>("conversas").updateOne({ _id: c._id }, { $set: { titulo, atualizadoEm: t } });
 
   const payload: PayloadMensagem = {
