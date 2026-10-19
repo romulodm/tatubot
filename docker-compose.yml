@@ -10,9 +10,11 @@
 # Configuração (opcional) no arquivo .env da raiz; veja .env.example.
 # Sem .env, tudo funciona no modo local: sem LLM, respostas extrativas.
 
+# api e worker usam o mesmo Dockerfile. Sem `image:` fixo de propósito: com o
+# mesmo nome nos dois, o build em paralelo falha com "image already exists".
+# O segundo build sai do cache, então na prática a imagem é construída uma vez.
 x-api-base: &api-base
   build: ./api
-  image: tatubot-api
   depends_on:
     mongo: { condition: service_healthy }
   environment: &api-env
@@ -81,7 +83,7 @@ services:
       interval: 5s
       retries: 30
 
-  # Mesmo código e mesma imagem da api, outro comando: consome a fila
+  # Mesmo código e mesmo Dockerfile da api, outro comando: consome a fila
   # (indexação e respostas do bot). Para escalar: --scale worker=3.
   worker:
     <<: *api-base
