@@ -1,8 +1,13 @@
-# context.md: RepoBot (nivelamento técnico)
+# context.md: tatubot (nivelamento técnico)
 
 > Documento de contexto para quem vai construir o projeto (pessoas e IA).
 > Leia inteiro antes de escrever código. Decisões novas vão para `docs/decisoes.md`.
-> Nome "RepoBot" é provisório.
+> Nome "tatubot" é provisório.
+>
+> **Estado atual (2026-10-19):** o projeto roda como `web/` (Next.js: páginas e auth)
+> + `api/` (Node puro: o papel do `indexador` e da parte de dados da `api` daqui),
+> com MongoDB e a fila no próprio banco. O desenho de referência continua sendo este
+> documento; o que mudou e por quê está em `docs/decisoes.md` e `docs/arquitetura.md`.
 
 ---
 
@@ -109,7 +114,7 @@ GITHUB_TOKEN=                  # opcional; só para repositórios privados (fase
 ## 5. Estrutura do repositório
 
 ```
-repobot/
+tatubot/
 ├── docker-compose.yml
 ├── .env.example
 ├── docs/

@@ -1,7 +1,9 @@
 # Registro de decisões
 
-Formato: data, decisão, motivo. Decisões do MVP em Next.js + MongoDB, que diverge
-de propósito do desenho de dois serviços do `context.md`.
+Formato: data, decisão, motivo. As linhas de 2026-10-16 são do MVP em um app Next.js
+só; as de 2026-10-19 são da separação em dois serviços (ver `arquitetura.md`).
+Quando uma decisão nova substitui uma antiga, as duas ficam aqui,
+para dar para seguir o raciocínio.
 
 | Data | Decisão | Motivo |
 |---|---|---|
@@ -24,3 +26,15 @@ de propósito do desenho de dois serviços do `context.md`.
 | 2026-10-16 | Terceiro ranking no RRF: conceitos no caminho do arquivo | O nome da pasta e do arquivo é a melhor pista para "onde fica". Segmentos dinâmicos (`[locale]`) são ignorados. |
 | 2026-10-16 | Prior por tipo de arquivo (traduções, testes, migrações, docs) | Raramente são a resposta, a menos que a pergunta fale deles. |
 | 2026-10-16 | Resposta extrativa agrupada por arquivo, separando "é do assunto" de "também usa" | Para "onde fica", o que importa é o arquivo; quem só importa o componente vai numa linha à parte. |
+| 2026-10-19 | Backend sai do Next para o microsserviço `api/` em Node 22 + JavaScript (ESM), sem framework HTTP | Volta ao desenho de dois serviços do `context.md`. O Next fica com páginas e autenticação; repositórios, bots, conversas, fila, indexação e RAG vão para a api. Roteador, parser de body, validação, logger e verificação de JWT escritos à mão, como pede o `indexador`. |
+| 2026-10-19 | `api` e `worker` = mesmo Dockerfile, dois comandos (`server.js` e `worker.js`) | Uma indexação pesada não deixa a API lenta e cada um escala à parte. `WORKER_MODE=inline` junta os dois no dev. Substitui o worker inline no `instrumentation.ts` do Next. |
+| 2026-10-19 | JWT passa de HS256 para RS256 com JWKS em `/.well-known/jwks.json` | Agora há um segundo serviço verificando o token (a condição registrada em 2026-10-16). A api só tem a chave pública e não consegue fabricar token. Verificação à mão com `crypto.verify`; recarga do JWKS por `kid` desconhecido, no máximo 1x/min. |
+| 2026-10-19 | Chave privada gerada no primeiro boot do web, em `data/chaves/` (volume no Docker) | Nenhum segredo de JWT em `.env` ou no compose: o repositório é público. `JWT_SECRET` deixa de existir. |
+| 2026-10-19 | Navegador fala só com o web; `/api/*` (menos `/api/auth/*`) vai para a api por rewrite do Next | Mesma origem: cookies httpOnly e SSE funcionam sem CORS. `compress: false` no Next para o SSE não ficar preso em buffer. O rewrite é gravado no build (`API_URL` é build arg). |
+| 2026-10-19 | Web dono de `usuarios` e `refresh_tokens`; api dona do resto. Mesmo banco, coleções separadas | A api não lê usuários: tudo que precisa vem nas claims do JWT. Banco único mantém o compose simples e os dados do MVP. |
+| 2026-10-19 | Checagem de `Origin` na api aceita `WEB_ORIGIN` ou o `x-forwarded-host` do rewrite | Atrás do rewrite o `Host` que chega na api é `api:4000`, não o do navegador. |
+| 2026-10-19 | OpenAI como provedor padrão quando há `LLM_API_KEY`: `gpt-4.1-mini` e `text-embedding-3-small` | Provedor escolhido pelo time. Sem chave, continua o modo local. O cliente manda `max_completion_tokens` para a OpenAI e `max_tokens` para os compatíveis; modelos de raciocínio (`o*`, `gpt-5*`) recebem margem extra de tokens e não recebem `temperature`. |
+| 2026-10-19 | `LLM_EMBED_MODEL=local` força o embedding local mesmo com LLM | Provedores sem `/embeddings` (ou o LLM falso dos testes). |
+| 2026-10-19 | Testes da api com `node:test`; da web com `vitest` | `node:test` é o que o `context.md` pede para o serviço em Node puro. O teste da fila roda se houver Mongo em `MONGODB_URI` e é pulado se não houver. |
+| 2026-10-19 | `seedicon` também como dependência da api | Validar `avatarEstilo` contra `SEEDICON_STYLES`: estilo novo na lib passa a ser aceito sem mexer na api. Lib pequena e sem dependências. |
+| 2026-10-19 | Landing no visual do seedicon.romulodm.dev (coluna de 960px, `#0a0a0a`, acento `#7c7cff`); app logado mantém o visual atual | Pedido explícito. Os tokens ficam no escopo da landing (`.pagina`), sem mexer no app. |
