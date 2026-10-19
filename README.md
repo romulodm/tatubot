@@ -1,6 +1,6 @@
 # tatubot
 
-Colegas de IA que leram o seu código. Você conecta repositórios do GitHub, cria bots
+Colegas de IA que lêem o seu código. Você conecta repositórios do GitHub, cria bots
 (nome, instruções, modo e repositórios que podem ler) e conversa com eles. Toda resposta
 cita `arquivo:linhas`, com link para o GitHub fixado no commit indexado, e você acompanha
 ao vivo o que o bot está lendo.
