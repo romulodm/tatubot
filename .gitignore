@@ -1,7 +1,22 @@
-node_modules
-.next
-data
-.env
-.env.local
+# dependências e builds
+node_modules/
+.next/
 next-env.d.ts
 *.tsbuildinfo
+
+# dados locais: clones dos repositórios e a CHAVE PRIVADA do JWT
+data/
+
+# segredos: só o .env.example vai para o git
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# editor e sistema
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/

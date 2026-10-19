@@ -1,48 +1,110 @@
+# Sobe tudo:  docker compose up --build   ->  http://localhost:3000
+#
+#   navegador ──► web (Next, :3000) ── /api/* ──► api (Node, :4000) ──┐
+#                  │ auth, páginas, JWKS            repos, bots, chat   │
+#                  └──────────────┬─────────────────────────────────────┤
+#                                 ▼                                     ▼
+#                              mongo  ◄──────── fila (eventos) ──── worker
+#                                                 indexação + runtime do bot
+#
+# Configuração (opcional) no arquivo .env da raiz; veja .env.example.
+# Sem .env, tudo funciona no modo local: sem LLM, respostas extrativas.
+
+x-api-base: &api-base
+  build: ./api
+  image: tatubot-api
+  depends_on:
+    mongo: { condition: service_healthy }
+  environment: &api-env
+    MONGODB_URI: mongodb://mongo:27017
+    MONGODB_DB: tatubot
+    JWKS_URL: http://web:3000/.well-known/jwks.json
+    WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+    REPOS_DIR: /data/repos
+    # LLM: com LLM_API_KEY preenchida no .env, usa a OpenAI (ou o provedor de
+    # LLM_BASE_URL); sem chave, modo local. A chave só existe no .env, que o
+    # git ignora: nunca escreva a chave aqui.
+    LLM_PROVIDER: ${LLM_PROVIDER:-}
+    LLM_API_KEY: ${LLM_API_KEY:-}
+    LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+    LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-gpt-4.1-mini}
+    LLM_EMBED_MODEL: ${LLM_EMBED_MODEL:-}
+    EMBED_PREFIX_DOC: ${EMBED_PREFIX_DOC:-}
+    EMBED_PREFIX_QUERY: ${EMBED_PREFIX_QUERY:-}
+
 services:
   mongo:
     image: mongo:7
     volumes: [mongo_data:/data/db]
-    ports: ["27017:27017"]
+    # Só em 127.0.0.1: acessível do seu computador (Compass, testes), não da rede.
+    ports: ["127.0.0.1:27017:27017"]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       retries: 20
 
-  # Opcional: LLM local. Depois de subir, baixe os modelos:
+  # Front + autenticação. Gera o par de chaves RSA do JWT no primeiro boot,
+  # dentro do volume jwt_chaves (nada disso vai para o git).
+  web:
+    build:
+      context: ./web
+      args:
+        API_URL: http://api:4000
+    depends_on:
+      mongo: { condition: service_healthy }
+    ports: ["3000:3000"]
+    volumes: [jwt_chaves:/data/chaves]
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: tatubot
+      # sem HTTPS local, os cookies precisam aceitar http
+      COOKIE_INSEGURO: "1"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/.well-known/jwks.json').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      retries: 30
+
+  # API HTTP do microsserviço (sem worker: WORKER_MODE=off).
+  api:
+    <<: *api-base
+    depends_on:
+      mongo: { condition: service_healthy }
+      web: { condition: service_healthy }
+    environment:
+      <<: *api-env
+      WORKER_MODE: "off"
+    # Exposta só em 127.0.0.1 para depuração (curl, testes). O navegador
+    # sempre passa pelo web.
+    ports: ["127.0.0.1:4000:4000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      retries: 30
+
+  # Mesmo código e mesma imagem da api, outro comando: consome a fila
+  # (indexação e respostas do bot). Para escalar: --scale worker=3.
+  worker:
+    <<: *api-base
+    command: ["node", "src/worker.js"]
+    volumes: [repos_data:/data/repos]
+
+  # Opcional: LLM local em vez da OpenAI.
+  #   docker compose --profile ollama up -d ollama
   #   docker compose exec ollama ollama pull qwen2.5:7b
   #   docker compose exec ollama ollama pull nomic-embed-text
+  # e no .env: LLM_PROVIDER=openai_compat, LLM_BASE_URL=http://ollama:11434/v1,
+  # LLM_API_KEY=ollama, LLM_CHAT_MODEL=qwen2.5:7b, LLM_EMBED_MODEL=nomic-embed-text
   ollama:
     image: ollama/ollama
-    profiles: ["llm"]
+    profiles: ["ollama"]
     volumes: [ollama_data:/root/.ollama]
-    ports: ["11434:11434"]
+    ports: ["127.0.0.1:11434:11434"]
     environment:
       # contexto maior que o padrão; sem isso o Ollama trunca o prompt sem avisar
       OLLAMA_CONTEXT_LENGTH: "16384"
 
-  web:
-    build: .
-    depends_on:
-      mongo: { condition: service_healthy }
-    ports: ["3000:3000"]
-    volumes: [repos_data:/data/repos]
-    environment:
-      MONGODB_URI: mongodb://mongo:27017
-      MONGODB_DB: repobot
-      JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-em-producao-0123456789}
-      REPOS_DIR: /data/repos
-      WORKER_MODE: inline
-      # sem HTTPS local, cookies precisam aceitar http
-      COOKIE_INSEGURO: "1"
-      LLM_PROVIDER: ${LLM_PROVIDER:-local}
-      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
-      LLM_API_KEY: ${LLM_API_KEY:-ollama}
-      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-qwen2.5:7b}
-      LLM_EMBED_MODEL: ${LLM_EMBED_MODEL:-}
-      EMBED_PREFIX_DOC: ${EMBED_PREFIX_DOC:-}
-      EMBED_PREFIX_QUERY: ${EMBED_PREFIX_QUERY:-}
-
 volumes:
   mongo_data:
-  ollama_data:
   repos_data:
+  jwt_chaves:
+  ollama_data:
