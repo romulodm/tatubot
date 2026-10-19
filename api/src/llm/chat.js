@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { ErroTransitorio } from "../erros.js";
+import { postarLlm } from "./requisicao.js";
 
 // Cliente de chat no formato da OpenAI (POST /v1/chat/completions).
 //
@@ -81,20 +81,9 @@ export async function chat(o) {
   if (o.ferramentas?.length) corpo.tools = o.ferramentas;
   if (o.aoToken) corpo.stream_options = { include_usage: true }; // uso de tokens no último pedaço
 
-  let res;
-  try {
-    res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${config.llm.apiKey}` },
-      body: JSON.stringify(corpo),
-      signal: o.sinal ? AbortSignal.any([o.sinal, AbortSignal.timeout(180_000)]) : AbortSignal.timeout(180_000),
-    });
-  } catch (e) {
-    throw new ErroTransitorio(`LLM indisponível: ${/** @type {Error} */ (e).message}`);
-  }
-  // O corpo do erro da OpenAI não contém a chave, mas cortamos mesmo assim
-  // para não encher o log.
-  if (!res.ok) throw new ErroTransitorio(`LLM: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+  // Erros de rede, 429 e 5xx são tentados de novo lá dentro; chave inválida
+  // vira erro permanente com mensagem clara (ver requisicao.js).
+  const res = await postarLlm("/chat/completions", corpo, { timeoutMs: 180_000, sinal: o.sinal });
 
   if (!o.aoToken) {
     const j = await res.json();

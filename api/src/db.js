@@ -54,6 +54,8 @@ async function criarIndices(d) {
     d.collection("eventos").createIndex({ status: 1, disponivelEm: 1 }),
     d.collection("eventos_processados").createIndex({ eventId: 1, consumidor: 1 }, { unique: true }),
     d.collection("execucoes").createIndex({ mensagemId: 1 }),
+    // Checkpoint de embeddings de indexações que caíram no meio: some em 7 dias.
+    d.collection("embeddings_checkpoint").createIndex({ criadoEm: 1 }, { expireAfterSeconds: 7 * 86400 }),
   ]);
 }
 

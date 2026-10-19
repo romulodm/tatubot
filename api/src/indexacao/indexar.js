@@ -140,6 +140,7 @@ async function indexarTudo(repo, dir, sha, est) {
   await d.collection("chunks").deleteMany({ repoId: repo._id });
   await inserirEmLotes("arquivos", arquivos);
   await inserirEmLotes("chunks", chunks);
+  await limparCheckpoint(chunks);
 }
 
 /**
@@ -179,6 +180,7 @@ async function reindexarDiff(repo, dir, antigo, novo, est) {
   const chunks = await embeddar(repo, brutos, novo, cache, est);
   await inserirEmLotes("arquivos", arquivos);
   await inserirEmLotes("chunks", chunks);
+  await limparCheckpoint(chunks);
 }
 
 /**
@@ -262,15 +264,22 @@ async function embeddar(repo, brutos, sha, cache, est) {
   const faltando = [...new Set(hashes.filter((h) => !cache.has(h)))];
   const textoPorHash = new Map(brutos.map((c, i) => [hashes[i], textoEmbedado(c)]));
 
-  const LOTE = 32;
-  for (let i = 0; i < faltando.length; i += LOTE) {
-    const lote = faltando.slice(i, i + LOTE);
-    const vetores = await embedDocumentos(lote.map((h) => /** @type {string} */ (textoPorHash.get(h))));
-    lote.forEach((h, j) => cache.set(h, vetores[j]));
-    await progresso(repo._id, "gerando embeddings", Math.min(i + LOTE, faltando.length), faltando.length);
-  }
-  est.gerados += faltando.length;
-  est.reaproveitados += brutos.length - faltando.length;
+  // Vetores que uma tentativa anterior já gerou antes de cair (ver checkpoint abaixo).
+  await recuperarCheckpoint(faltando, cache);
+  const aGerar = faltando.filter((h) => !cache.has(h));
+
+  // Cada lote que fica pronto vai para o checkpoint na hora. Se a indexação
+  // cair no meio (rede, limite da API, container reiniciado), a próxima
+  // tentativa continua de onde parou em vez de pagar tudo de novo.
+  const textos = aGerar.map((h) => /** @type {string} */ (textoPorHash.get(h)));
+  const vetores = await embedDocumentos(textos, async (lote) => {
+    const hashesDoLote = lote.indices.map((i) => aGerar[i]);
+    await salvarCheckpoint(hashesDoLote, lote.vetores);
+    await progresso(repo._id, "gerando embeddings", lote.feitos, aGerar.length);
+  });
+  aGerar.forEach((h, i) => cache.set(h, vetores[i]));
+  est.gerados += aGerar.length;
+  est.reaproveitados += brutos.length - aGerar.length;
 
   const t = agora();
   return brutos.map((c, i) => ({
@@ -291,6 +300,39 @@ async function embeddar(repo, brutos, sha, cache, est) {
     criadoEm: t,
     atualizadoEm: t,
   }));
+}
+
+// ---------- checkpoint de embeddings ----------
+// Coleção `embeddings_checkpoint`: hashTexto -> vetor, só enquanto a indexação
+// não termina. O hash já inclui o modelo, então não há como misturar vetores
+// de modelos diferentes. Depois que os chunks são gravados, as entradas saem;
+// sobras de indexações abandonadas expiram sozinhas (índice TTL em db.js).
+
+/** @param {string[]} hashes @param {Map<string, number[]>} cache */
+async function recuperarCheckpoint(hashes, cache) {
+  if (!hashes.length) return;
+  const col = (await db()).collection("embeddings_checkpoint");
+  for (let i = 0; i < hashes.length; i += 1000) {
+    const docs = await col.find({ _id: { $in: /** @type {any[]} */ (hashes.slice(i, i + 1000)) } }).toArray();
+    for (const d of docs) cache.set(String(d._id), d.embedding);
+  }
+}
+
+/** @param {string[]} hashes @param {number[][]} vetores */
+async function salvarCheckpoint(hashes, vetores) {
+  if (!hashes.length) return;
+  const t = agora();
+  const ops = hashes.map((h, i) => ({
+    replaceOne: { filter: { _id: /** @type {any} */ (h) }, replacement: { embedding: vetores[i], criadoEm: t }, upsert: true },
+  }));
+  await (await db()).collection("embeddings_checkpoint").bulkWrite(ops, { ordered: false });
+}
+
+/** @param {import("../tipos.js").Chunk[]} chunks */
+async function limparCheckpoint(chunks) {
+  const hashes = [...new Set(chunks.map((c) => c.hashTexto))];
+  const col = (await db()).collection("embeddings_checkpoint");
+  for (let i = 0; i < hashes.length; i += 1000) await col.deleteMany({ _id: { $in: /** @type {any[]} */ (hashes.slice(i, i + 1000)) } });
 }
 
 /** @param {string} colecao @param {object[]} docs */

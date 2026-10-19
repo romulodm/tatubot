@@ -1,6 +1,6 @@
 import { config } from "../config.js";
-import { ErroTransitorio } from "../erros.js";
 import { tokenizar } from "../indexacao/tokenizar.js";
+import { postarLlm } from "./requisicao.js";
 
 // Embeddings: transformar texto em um vetor de números de forma que textos
 // parecidos fiquem próximos (ver docs/rag/04-embeddings.md).
@@ -13,7 +13,17 @@ import { tokenizar } from "../indexacao/tokenizar.js";
 //   em qualquer máquina e como linha de base para comparar com um modelo real.
 
 const DIM_LOCAL = 512;
-const LOTE = 32; // textos por requisição
+
+// Lotes para a API remota. A OpenAI aceita até 2048 textos e ~300 mil tokens
+// por requisição; ficamos bem abaixo para não esbarrar no limite de tokens por
+// minuto de contas novas. Várias requisições rodam em paralelo.
+const LOTE_TEXTOS = 128;
+const LOTE_CARACTERES = 240_000; // ~80 mil tokens (código dá ~3 caracteres por token)
+const PARALELAS = 4;
+// text-embedding-3-small aceita até 8191 tokens por texto. Um bloco de 60
+// linhas de um JSON minificado passa disso fácil, e a API recusa o lote
+// inteiro. Cortamos cada texto antes: o começo do trecho basta para o vetor.
+const MAX_CARACTERES_TEXTO = 16_000;
 
 /**
  * Nome do modelo em uso. Fica gravado no repositório indexado: se mudar,
@@ -28,18 +38,61 @@ function usarRemoto() {
 }
 
 /**
+ * Lote concluído: posições (no array original de textos) e os vetores delas.
+ * @typedef {{ indices: number[], vetores: number[][], feitos: number }} LoteConcluido
+ */
+
+/**
  * Embeddings dos trechos de código (lado do índice).
  * @param {string[]} textos
- * @returns {Promise<number[][]>}
+ * @param {(lote: LoteConcluido) => void | Promise<void>} [aoLote] chamado a cada lote que fica pronto
+ *   (a indexação usa para mostrar o progresso e gravar o checkpoint)
+ * @returns {Promise<number[][]>} na mesma ordem dos textos
  */
-export async function embedDocumentos(textos) {
+export async function embedDocumentos(textos, aoLote) {
+  // Local é instantâneo e sem rede: sem lotes, sem progresso, sem checkpoint.
   if (!usarRemoto()) return textos.map(embedLocal);
+
+  const lotes = montarLotes(textos.map((t) => (config.llm.prefixoDoc + t).slice(0, MAX_CARACTERES_TEXTO)));
   /** @type {number[][]} */
-  const r = [];
-  for (let i = 0; i < textos.length; i += LOTE) {
-    r.push(...(await embedRemoto(textos.slice(i, i + LOTE).map((t) => config.llm.prefixoDoc + t))));
-  }
+  const r = new Array(textos.length);
+  let feitos = 0;
+  let proximo = 0;
+
+  // PARALELAS "trabalhadores" puxam o próximo lote da lista até acabar.
+  const trabalhador = async () => {
+    while (proximo < lotes.length) {
+      const { inicio, itens } = lotes[proximo++];
+      const vetores = await embedRemoto(itens);
+      vetores.forEach((v, j) => (r[inicio + j] = v));
+      feitos += itens.length;
+      await aoLote?.({ indices: itens.map((_, j) => inicio + j), vetores, feitos });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALELAS, lotes.length) }, trabalhador));
   return r;
+}
+
+/**
+ * Agrupa os textos em lotes respeitando os dois limites (quantidade e tamanho).
+ * @param {string[]} textos
+ */
+function montarLotes(textos) {
+  /** @type {{ inicio: number, itens: string[] }[]} */
+  const lotes = [];
+  let atual = { inicio: 0, itens: /** @type {string[]} */ ([]) };
+  let caracteres = 0;
+  textos.forEach((t, i) => {
+    if (atual.itens.length && (atual.itens.length >= LOTE_TEXTOS || caracteres + t.length > LOTE_CARACTERES)) {
+      lotes.push(atual);
+      atual = { inicio: i, itens: [] };
+      caracteres = 0;
+    }
+    atual.itens.push(t);
+    caracteres += t.length;
+  });
+  if (atual.itens.length) lotes.push(atual);
+  return lotes;
 }
 
 /**
@@ -49,23 +102,13 @@ export async function embedDocumentos(textos) {
  */
 export async function embedConsulta(texto) {
   if (!usarRemoto()) return embedLocal(texto);
-  return (await embedRemoto([config.llm.prefixoConsulta + texto]))[0];
+  return (await embedRemoto([(config.llm.prefixoConsulta + texto).slice(0, MAX_CARACTERES_TEXTO)]))[0];
 }
 
 /** @param {string[]} input @returns {Promise<number[][]>} */
 async function embedRemoto(input) {
-  let res;
-  try {
-    res = await fetch(`${config.llm.baseUrl}/embeddings`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${config.llm.apiKey}` },
-      body: JSON.stringify({ model: config.llm.embedModel, input }),
-      signal: AbortSignal.timeout(120_000),
-    });
-  } catch (e) {
-    throw new ErroTransitorio(`embeddings indisponíveis: ${/** @type {Error} */ (e).message}`);
-  }
-  if (!res.ok) throw new ErroTransitorio(`embeddings: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+  // 429 e 5xx são tentados de novo lá dentro (ver requisicao.js).
+  const res = await postarLlm("/embeddings", { model: config.llm.embedModel, input });
   const corpo = /** @type {{ data: { embedding: number[], index: number }[] }} */ (await res.json());
   // A API devolve um `index` por item; ordenamos por ele por garantia.
   return corpo.data.sort((a, b) => a.index - b.index).map((d) => normalizar(d.embedding));
