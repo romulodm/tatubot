@@ -1,5 +1,7 @@
-// LLM falso compatível com OpenAI, para testar pipeline e agente sem modelo.
-// Uso: node scripts/llm-falso.mjs 11999  →  LLM_BASE_URL=http://localhost:11999/v1
+// LLM falso compatível com a API da OpenAI, para testar os modos pipeline e
+// agente sem gastar crédito nem baixar modelo. Responde de forma determinística.
+//
+// Uso: npm run llm-falso   ->   LLM_BASE_URL=http://localhost:11999/v1 LLM_API_KEY=qualquer
 import http from "node:http";
 
 const porta = Number(process.argv[2] ?? 11999);
@@ -22,7 +24,9 @@ function responder(corpo) {
   const lido = /^(\S+) \(L(\d+)-L(\d+)\)/m.exec(ferramentas.at(-1)?.content ?? "");
   const trecho = /arquivo="([^"]+)" linhas="(\d+)-(\d+)"/.exec(texto);
   const [path, a, b] = lido ? [lido[1], lido[2], lido[3]] : trecho ? [trecho[1], trecho[2], trecho[3]] : ["x", 1, 1];
-  return { conteudo: `A opção está definida em \`${path}\` [${path}:L${a}-L${b}]. **Resumo:** ela muda o nome do decorator.\n\n- Também aparece aqui [src/inventado.js:L1-L9].` };
+  return {
+    conteudo: `A opção está definida em \`${path}\` [${path}:L${a}-L${b}]. **Resumo:** ela muda o nome do decorator.\n\n- Também aparece aqui [src/inventado.js:L1-L9].`,
+  };
 }
 
 http
@@ -36,7 +40,11 @@ http
       if (!corpo.stream) {
         res.setHeader("content-type", "application/json");
         const message = r.chamadas
-          ? { role: "assistant", content: null, tool_calls: r.chamadas.map((c) => ({ id: c.id, type: "function", function: { name: c.nome, arguments: JSON.stringify(c.args) } })) }
+          ? {
+              role: "assistant",
+              content: null,
+              tool_calls: r.chamadas.map((c) => ({ id: c.id, type: "function", function: { name: c.nome, arguments: JSON.stringify(c.args) } })),
+            }
           : { role: "assistant", content: r.conteudo };
         return res.end(JSON.stringify({ choices: [{ message }], usage: uso }));
       }

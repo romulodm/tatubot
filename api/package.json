@@ -1,0 +1,23 @@
+{
+  "name": "tatubot-api",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Microsserviço do tatubot: repositórios, bots, conversas, indexação e runtime do bot (RAG).",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../.env src/server.js",
+    "start": "node src/server.js",
+    "worker": "node src/worker.js",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "llm-falso": "node scripts/llm-falso.js 11999"
+  },
+  "engines": {
+    "node": ">=22.9"
+  },
+  "dependencies": {
+    "mongodb": "^6.21.0",
+    "seedicon": "^0.2.1",
+    "typescript": "~5.9.3"
+  }
+}

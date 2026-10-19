@@ -1,0 +1,13 @@
+{
+  // Só para o editor: faz o VS Code entender os @typedef / @param do JSDoc
+  // e completar campos. Não há etapa de build; o Node roda os .js direto.
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2023",
+    "checkJs": false,
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "test", "scripts"]
+}
