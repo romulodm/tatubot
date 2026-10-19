@@ -71,7 +71,7 @@ export default async function Inicio() {
         <section className={s.hero}>
           <div>
             <h1 className={s.titulo}>
-              Bots que leram
+              Bots que lêem
               <br />o seu código.
             </h1>
             <p className={s.lede}>
@@ -316,7 +316,7 @@ export default async function Inicio() {
               <Avatar seed="tatubot" estilo="pixelart" tamanho={24} forma="rounded" />
               tatubot
             </Link>
-            <p>Colegas de IA que leram o seu código. Respostas com arquivo e linha, ou nenhuma resposta.</p>
+            <p>Colegas de IA que lêem o seu código. Respostas com arquivo e linha, ou nenhuma resposta.</p>
             <p className={s.rodapeMenor}>Projeto de nivelamento técnico · Next.js, Node.js e MongoDB</p>
           </div>
           <div className={s.rodapeColunas}>

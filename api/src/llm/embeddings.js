@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { tokenizar } from "../indexacao/tokenizar.js";
+import { log } from "../log.js";
 import { postarLlm } from "./requisicao.js";
 
 // Embeddings: transformar texto em um vetor de números de forma que textos
@@ -20,10 +21,13 @@ const DIM_LOCAL = 512;
 const LOTE_TEXTOS = 128;
 const LOTE_CARACTERES = 240_000; // ~80 mil tokens (código dá ~3 caracteres por token)
 const PARALELAS = 4;
-// text-embedding-3-small aceita até 8191 tokens por texto. Um bloco de 60
-// linhas de um JSON minificado passa disso fácil, e a API recusa o lote
-// inteiro. Cortamos cada texto antes: o começo do trecho basta para o vetor.
-const MAX_CARACTERES_TEXTO = 16_000;
+// text-embedding-3-small aceita até 8192 tokens por texto, e um texto acima
+// disso faz a API recusar o lote INTEIRO. Código comum dá 3 a 4 caracteres
+// por token, mas lista de domínios, base64 ou path de SVG chegam perto de
+// 1 por token. 8 mil caracteres cabem até no pior caso; e se mesmo assim a
+// API reclamar, embedRemoto() encurta só o texto apontado e tenta de novo.
+// O começo do trecho (cabeçalho + primeiras linhas) basta para o vetor.
+const MAX_CARACTERES_TEXTO = 8_000;
 
 /**
  * Nome do modelo em uso. Fica gravado no repositório indexado: se mudar,
@@ -60,10 +64,16 @@ export async function embedDocumentos(textos, aoLote) {
   let proximo = 0;
 
   // PARALELAS "trabalhadores" puxam o próximo lote da lista até acabar.
+  // Se um falhar de vez, os outros param de puxar lotes novos (o que já ficou
+  // pronto está no checkpoint).
+  let falhou = false;
   const trabalhador = async () => {
-    while (proximo < lotes.length) {
+    while (proximo < lotes.length && !falhou) {
       const { inicio, itens } = lotes[proximo++];
-      const vetores = await embedRemoto(itens);
+      const vetores = await embedRemoto(itens).catch((e) => {
+        falhou = true;
+        throw e;
+      });
       vetores.forEach((v, j) => (r[inicio + j] = v));
       feitos += itens.length;
       await aoLote?.({ indices: itens.map((_, j) => inicio + j), vetores, feitos });
@@ -108,6 +118,29 @@ export async function embedConsulta(texto) {
 /** @param {string[]} input @returns {Promise<number[][]>} */
 async function embedRemoto(input) {
   // 429 e 5xx são tentados de novo lá dentro (ver requisicao.js).
+  // Aqui tratamos só o "texto longo demais": a mensagem da OpenAI diz qual
+  // item estourou ("Invalid 'input[90]': maximum input length is 8192 tokens"),
+  // então cortamos esse item pela metade e mandamos o lote de novo.
+  let textos = input;
+  /** @type {Map<number, number>} quantas vezes cada item já foi encurtado */
+  const cortes = new Map();
+  for (;;) {
+    try {
+      return await pedirEmbeddings(textos);
+    } catch (e) {
+      const m = /input\[(\d+)\].*maximum input length/i.exec(String(/** @type {Error} */ (e).message));
+      const i = m ? Number(m[1]) : -1;
+      const n = (cortes.get(i) ?? 0) + 1;
+      if (i < 0 || i >= textos.length || n > 5) throw e;
+      cortes.set(i, n);
+      textos = textos.map((t, j) => (j === i ? t.slice(0, Math.floor(t.length / 2)) : t));
+      log("aviso", "texto longo demais para o embedding, encurtando", { indice: i, caracteres: textos[i].length });
+    }
+  }
+}
+
+/** @param {string[]} input @returns {Promise<number[][]>} */
+async function pedirEmbeddings(input) {
   const res = await postarLlm("/embeddings", { model: config.llm.embedModel, input });
   const corpo = /** @type {{ data: { embedding: number[], index: number }[] }} */ (await res.json());
   // A API devolve um `index` por item; ordenamos por ele por garantia.

@@ -30,6 +30,9 @@ describe("filtros", () => {
     assert.equal(motivoIgnorarCaminho("public/logo.png"), "binario");
     assert.equal(motivoIgnorarCaminho("src/index.ts"), null);
     assert.equal(motivoIgnorarConteudo(Buffer.from([65, 0, 66]), 1000), "binario");
+    assert.equal(motivoIgnorarCaminho("public/flags/es.svg"), "imagem");
+    assert.equal(motivoIgnorarConteudo(Buffer.from(`[${'"exemplo.com",'.repeat(1000)}]`), 200_000), "linha_longa");
+    assert.equal(motivoIgnorarConteudo(Buffer.from("const a = 1;\nconst b = 2;\n"), 200_000), null);
   });
 });
 
