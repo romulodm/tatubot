@@ -1,13 +1,6 @@
 @import "@fontsource-variable/bricolage-grotesque";
 @import "@fontsource-variable/jetbrains-mono";
 
-/*
-  Tokens
-  ------
-  Preto de verdade como fundo (como no Grok Bot), uma superfície fria um tom
-  acima, texto em giz levemente quente e um único acento azul-sinal reservado
-  ao que está VIVO: o bot trabalhando, a trilha de leitura e as citações.
-*/
 :root {
   color-scheme: dark;
   --preto: #000000;
@@ -26,7 +19,6 @@
   --fonte: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
   --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* escala modular 1.25 a partir de 16px */
   --t-xs: 0.8rem;
   --t-sm: 0.875rem;
   --t-md: 1rem;
@@ -102,7 +94,9 @@ code,
   text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 .btn:disabled {
   opacity: 0.45;

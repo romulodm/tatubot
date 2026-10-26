@@ -5,8 +5,6 @@ import { TRABALHOS } from "@/lib/trabalhos";
 import { Avatar } from "@/components/Avatar";
 import s from "./landing.module.css";
 
-// Abas com os modelos de bot. Os mesmos modelos aparecem no formulário de
-// criação ("Começar de um modelo"), então o que a landing promete é o que existe.
 export function Trabalhos() {
   const [atual, setAtual] = useState(0);
   const t = TRABALHOS[atual];
@@ -34,7 +32,9 @@ export function Trabalhos() {
           <p>{t.pergunta}</p>
         </div>
         <p className={s.trabalhoDica}>
-          {t.modo === "agente" ? "Abre arquivos e segue referências até ter certeza." : "Responde com os trechos mais relevantes, numa chamada só."}
+          {t.modo === "agente"
+            ? "Abre arquivos e segue referências até ter certeza."
+            : "Responde com os trechos mais relevantes, numa chamada só."}
         </p>
       </div>
     </div>

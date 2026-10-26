@@ -17,7 +17,10 @@ export function FormRepo() {
     setErro("");
     setEnviando(true);
     try {
-      await api("/api/repos", { method: "POST", json: { url: String(f.get("url")).trim(), branch: String(f.get("branch") || "").trim() || undefined } });
+      await api("/api/repos", {
+        method: "POST",
+        json: { url: String(f.get("url")).trim(), branch: String(f.get("branch") || "").trim() || undefined },
+      });
       form.reset();
       await recarregar();
     } catch (x) {

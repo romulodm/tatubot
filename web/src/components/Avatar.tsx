@@ -1,7 +1,5 @@
 import { generateAvatar } from "seedicon";
 
-// SVG determinístico a partir da seed do bot: nada para armazenar ou servir.
-// Mesma seed, mesmo avatar, no servidor e no navegador.
 export function Avatar({
   seed,
   estilo = "pixelart",

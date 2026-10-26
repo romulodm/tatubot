@@ -1,8 +1,6 @@
-import { rota, json } from "@/lib/http";
-import { exigirUsuario } from "@/lib/auth/sessao";
-import { db } from "@/lib/db";
-import { naoAutorizado } from "@/lib/erros";
-import type { Usuario } from "@/lib/tipos";
+import { db, type Usuario } from "@/lib/db";
+import { json, naoAutorizado, rota } from "@/lib/http";
+import { exigirUsuario } from "@/lib/auth";
 
 export const GET = rota(async () => {
   const c = await exigirUsuario();

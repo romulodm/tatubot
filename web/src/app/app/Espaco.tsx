@@ -89,7 +89,12 @@ export function Espaco({ usuario, children }: { usuario: Estado["usuario"]; chil
                         <Avatar seed={b.avatarSeed} estilo={b.avatarEstilo} tamanho={24} />
                         <span>{b.nome}</span>
                       </Link>
-                      <button className={s.botNova} onClick={() => novaConversa(b.id)} aria-label={`Nova conversa com ${b.nome}`} title="Nova conversa">
+                      <button
+                        className={s.botNova}
+                        onClick={() => novaConversa(b.id)}
+                        aria-label={`Nova conversa com ${b.nome}`}
+                        title="Nova conversa"
+                      >
                         +
                       </button>
                     </div>

@@ -229,7 +229,6 @@
   margin-bottom: 0.6rem;
 }
 
-/* onboarding: sequência real */
 .onboarding {
   list-style: none;
   counter-reset: passo;
@@ -279,7 +278,6 @@
   margin-bottom: 0;
 }
 
-/* cartões de bot */
 .gradeBots {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -786,7 +784,6 @@
   font-weight: 620;
 }
 
-/* A trilha é a assinatura do produto: uma linha do tempo do que o bot leu. */
 .trilha {
   list-style: none;
   margin: 0;

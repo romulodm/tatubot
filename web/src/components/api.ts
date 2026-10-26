@@ -1,9 +1,11 @@
 "use client";
 
-// fetch com cookies de sessão. Em 401, tenta renovar o access token uma vez
-// (rotação do refresh) e repete a chamada; se não der, manda para o login.
 export class ErroApi extends Error {
-  constructor(public status: number, public codigo: string, mensagem: string) {
+  constructor(
+    public status: number,
+    public codigo: string,
+    mensagem: string,
+  ) {
     super(mensagem);
   }
 }
@@ -41,8 +43,6 @@ export async function api<T = unknown>(caminho: string, init: RequestInit & { js
   return corpo as T;
 }
 
-// Leitor de SSE sobre fetch (EventSource não manda cookies cross-origin nem
-// permite headers; aqui é same-origin, mas o fetch dá controle de reconexão).
 export async function ouvirEventos(caminho: string, aoEvento: (tipo: string, dado: unknown) => void, sinal: AbortSignal) {
   while (!sinal.aborted) {
     try {
@@ -69,10 +69,9 @@ export async function ouvirEventos(caminho: string, aoEvento: (tipo: string, dad
           if (dado) aoEvento(tipo, JSON.parse(dado));
         }
       }
-    } catch (e) {
+    } catch {
       if (sinal.aborted) return;
     }
-    // Reconexão: o cliente recarrega o histórico para não perder eventos.
     aoEvento("reconectando", null);
     await new Promise((r) => setTimeout(r, 1500));
   }

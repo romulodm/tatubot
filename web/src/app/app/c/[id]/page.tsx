@@ -9,7 +9,11 @@ import { useEspaco } from "../../Espaco";
 import type { ConversaUI, MensagemUI } from "../../tipos-ui";
 import s from "../../app.module.css";
 
-const SUGESTOES = ["Como este projeto está organizado?", "Onde fica a autenticação e como ela funciona?", "Quais variáveis de ambiente o projeto lê?"];
+const SUGESTOES = [
+  "Como este projeto está organizado?",
+  "Onde fica a autenticação e como ela funciona?",
+  "Quais variáveis de ambiente o projeto lê?",
+];
 
 export default function Conversa({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -40,7 +44,6 @@ export default function Conversa({ params }: { params: Promise<{ id: string }> }
     void carregarHistorico();
   }, [id, carregarHistorico]);
 
-  // SSE: cada mudança na resposta do bot (trilha, texto parcial, final).
   useEffect(() => {
     const ctrl = new AbortController();
     void ouvirEventos(
@@ -51,7 +54,7 @@ export default function Conversa({ params }: { params: Promise<{ id: string }> }
           setMensagens((xs) => (xs.some((x) => x.id === m.id) ? xs.map((x) => (x.id === m.id ? m : x)) : [...xs, m]));
           if (m.status === "concluida") void recarregar();
         } else if (tipo === "reconectando") {
-          void carregarHistorico(); // não perder o que chegou enquanto estava desconectado
+          void carregarHistorico();
         }
       },
       ctrl.signal,
@@ -74,7 +77,10 @@ export default function Conversa({ params }: { params: Promise<{ id: string }> }
     setTexto("");
     colarNoFim.current = true;
     try {
-      const r = await api<{ pergunta: MensagemUI; resposta: MensagemUI }>(`/api/conversas/${id}/mensagens`, { method: "POST", json: { conteudo: c } });
+      const r = await api<{ pergunta: MensagemUI; resposta: MensagemUI }>(`/api/conversas/${id}/mensagens`, {
+        method: "POST",
+        json: { conteudo: c },
+      });
       setMensagens((xs) => [...xs.filter((x) => x.id !== r.resposta.id), r.pergunta, r.resposta]);
       setSelecionada(null);
       void recarregar();
@@ -140,7 +146,14 @@ export default function Conversa({ params }: { params: Promise<{ id: string }> }
                 {m.conteudo}
               </div>
             ) : (
-              <Resposta key={m.id} m={m} bot={bot} ativa={foco?.id === m.id} aoSelecionar={() => setSelecionada(m.id)} aoFocarCitacao={setCitacaoFoco} />
+              <Resposta
+                key={m.id}
+                m={m}
+                bot={bot}
+                ativa={foco?.id === m.id}
+                aoSelecionar={() => setSelecionada(m.id)}
+                aoFocarCitacao={setCitacaoFoco}
+              />
             ),
           )}
           <div ref={fimRef} />
@@ -238,13 +251,15 @@ interface ExecucaoUI {
   finalizadoEm: string | null;
 }
 
-// Painel lateral: o que o bot fez para chegar na resposta selecionada.
 function Painel({ m, citacaoFoco }: { m: MensagemUI | null; citacaoFoco: number | null }) {
   const [exec, setExec] = useState<ExecucaoUI | null>(null);
   const [aberto, setAberto] = useState(false);
   useEffect(() => {
     setExec(null);
-    if (m?.execucaoId && m.status === "concluida") void api<ExecucaoUI>(`/api/execucoes/${m.execucaoId}`).then(setExec).catch(() => {});
+    if (m?.execucaoId && m.status === "concluida")
+      void api<ExecucaoUI>(`/api/execucoes/${m.execucaoId}`)
+        .then(setExec)
+        .catch(() => {});
   }, [m?.execucaoId, m?.status]);
 
   if (!m)
@@ -282,7 +297,9 @@ function Painel({ m, citacaoFoco }: { m: MensagemUI | null; citacaoFoco: number 
               <time className={s.meta}>+{((new Date(p.em).getTime() - inicio) / 1000).toFixed(1)}s</time>
             </li>
           ))}
-          {!m.trilha.length && <li className={s.meta}>{m.status === "pendente" ? "Na fila, esperando um worker livre." : "Sem passos registrados."}</li>}
+          {!m.trilha.length && (
+            <li className={s.meta}>{m.status === "pendente" ? "Na fila, esperando um worker livre." : "Sem passos registrados."}</li>
+          )}
         </ol>
 
         {m.citacoes.length > 0 && (
@@ -308,7 +325,8 @@ function Painel({ m, citacaoFoco }: { m: MensagemUI | null; citacaoFoco: number 
           <details className={s.bloco}>
             <summary>Execução completa ({exec.passos.length} passos)</summary>
             <p className={s.meta}>
-              Modo {exec.modo}. {exec.tokensEntrada.toLocaleString("pt-BR")} tokens de entrada, {exec.tokensSaida.toLocaleString("pt-BR")} de saída.
+              Modo {exec.modo}. {exec.tokensEntrada.toLocaleString("pt-BR")} tokens de entrada, {exec.tokensSaida.toLocaleString("pt-BR")}{" "}
+              de saída.
               {exec.citacoesRemovidas.length ? ` ${exec.citacoesRemovidas.length} citação(ões) inválida(s) removida(s).` : ""}
             </p>
             <ol className={s.passosExec}>

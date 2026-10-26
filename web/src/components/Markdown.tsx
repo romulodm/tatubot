@@ -15,10 +15,15 @@ export function linkCitacao(c: CitacaoUI) {
   return `https://github.com/${c.ghOwner}/${c.ghNome}/blob/${c.commitSha}/${c.path}#L${c.linhaInicio}-L${c.linhaFim}`;
 }
 
-// Markdown mínimo, montado como elementos React (nada de innerHTML com
-// texto do modelo): blocos de código, títulos, listas, parágrafos,
-// `código`, **negrito** e as citações [[n]] viram chips com link.
-export function Markdown({ texto, citacoes = [], aoFocarCitacao }: { texto: string; citacoes?: CitacaoUI[]; aoFocarCitacao?: (i: number) => void }) {
+export function Markdown({
+  texto,
+  citacoes = [],
+  aoFocarCitacao,
+}: {
+  texto: string;
+  citacoes?: CitacaoUI[];
+  aoFocarCitacao?: (i: number) => void;
+}) {
   const blocos: ReactNode[] = [];
   const partes = texto.split(/```([\w-]*)\n?([\s\S]*?)(?:```|$)/g);
   for (let i = 0; i < partes.length; i += 3) {

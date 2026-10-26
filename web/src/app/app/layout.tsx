@@ -1,10 +1,8 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { usuarioAtual } from "@/lib/auth/sessao";
+import { usuarioAtual } from "@/lib/auth";
 import { Espaco } from "./Espaco";
 
-// Portão de autenticação das páginas do app. Access token vencido: passa
-// pela rota de refresh (que pode gravar cookies) e volta para cá.
 export default async function LayoutApp({ children }: { children: React.ReactNode }) {
   const u = await usuarioAtual();
   if (!u) {

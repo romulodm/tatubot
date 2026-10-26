@@ -4,12 +4,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-// Chave temporária só para o teste (nunca a de verdade).
 process.env.JWT_PRIVATE_KEY_PATH = path.join(mkdtempSync(path.join(tmpdir(), "tatubot-")), "jwt.pem");
 
-const { hashSenha, conferirSenha } = await import("@/lib/auth/senha");
-const { emitirAccess, verificarAccess } = await import("@/lib/auth/tokens");
-const { jwks } = await import("@/lib/auth/chaves");
+const { hashSenha, conferirSenha } = await import("@/lib/auth");
+const { emitirAccess, verificarAccess } = await import("@/lib/auth");
+const { jwks } = await import("@/lib/auth");
 
 describe("senha", () => {
   it("scrypt confere a senha certa e rejeita a errada", async () => {

@@ -64,7 +64,13 @@ export function FormBot({ bot }: { bot?: BotUI }) {
           <span className={s.meta}>Começar de um modelo</span>
           <div className={s.modelosLista}>
             {TRABALHOS.map((t) => (
-              <button type="button" key={t.id} className="btn btn-contorno btn-peq" onClick={() => usarTrabalho(t.id)} aria-pressed={nome === t.nome}>
+              <button
+                type="button"
+                key={t.id}
+                className="btn btn-contorno btn-peq"
+                onClick={() => usarTrabalho(t.id)}
+                aria-pressed={nome === t.nome}
+              >
                 {t.nome}
               </button>
             ))}
@@ -79,13 +85,29 @@ export function FormBot({ bot }: { bot?: BotUI }) {
         </button>
         <label className="campo" style={{ flex: 1 }}>
           <span>Nome</span>
-          <input className="entrada" value={nome} onChange={(e) => setNome(e.target.value)} required minLength={2} maxLength={40} placeholder="ex.: Guia de onboarding" />
+          <input
+            className="entrada"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            required
+            minLength={2}
+            maxLength={40}
+            placeholder="ex.: Guia de onboarding"
+          />
         </label>
       </div>
 
       <div className={s.estilos} role="radiogroup" aria-label="Estilo do avatar">
         {ESTILOS.map((x) => (
-          <button type="button" key={x} role="radio" aria-checked={estilo === x} className={s.estilo} onClick={() => setEstilo(x)} title={x}>
+          <button
+            type="button"
+            key={x}
+            role="radio"
+            aria-checked={estilo === x}
+            className={s.estilo}
+            onClick={() => setEstilo(x)}
+            title={x}
+          >
             <Avatar seed={seed} estilo={x} tamanho={30} />
           </button>
         ))}
@@ -93,7 +115,13 @@ export function FormBot({ bot }: { bot?: BotUI }) {
 
       <label className="campo">
         <span>Como ele deve trabalhar</span>
-        <textarea className="entrada" value={instrucoes} onChange={(e) => setInstrucoes(e.target.value)} maxLength={4000} placeholder="ex.: Você ajuda pessoas novas no time. Explique do geral para o específico." />
+        <textarea
+          className="entrada"
+          value={instrucoes}
+          onChange={(e) => setInstrucoes(e.target.value)}
+          maxLength={4000}
+          placeholder="ex.: Você ajuda pessoas novas no time. Explique do geral para o específico."
+        />
         <small>Ele segue estas instruções, mas nunca deixa de citar o código nem lê repositórios fora da lista abaixo.</small>
       </label>
 
@@ -120,7 +148,11 @@ export function FormBot({ bot }: { bot?: BotUI }) {
         {repos.length ? (
           repos.map((r) => (
             <label key={r.id} className={s.opcaoRepo}>
-              <input type="checkbox" checked={repoIds.includes(r.id)} onChange={(e) => setRepoIds((x) => (e.target.checked ? [...x, r.id] : x.filter((i) => i !== r.id)))} />
+              <input
+                type="checkbox"
+                checked={repoIds.includes(r.id)}
+                onChange={(e) => setRepoIds((x) => (e.target.checked ? [...x, r.id] : x.filter((i) => i !== r.id)))}
+              />
               <span className="mono">
                 {r.ghOwner}/{r.ghNome}
               </span>

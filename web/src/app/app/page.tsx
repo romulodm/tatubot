@@ -12,7 +12,6 @@ export default function InicioApp() {
 
   const primeiroNome = usuario.nome.split(" ")[0];
 
-  // Primeiro acesso: o caminho é uma sequência real, então mostramos os passos.
   if (!repos.length || !bots.length) {
     return (
       <div className={s.pagina}>
@@ -52,7 +51,10 @@ export default function InicioApp() {
       <p className={s.subPagina}>Comece uma conversa ou ajuste o trabalho de cada um.</p>
       <div className={s.gradeBots}>
         {bots.map((b) => {
-          const nomesRepos = b.repoIds.map((id) => repos.find((r) => r.id === id)).filter(Boolean).map((r) => `${r!.ghOwner}/${r!.ghNome}`);
+          const nomesRepos = b.repoIds
+            .map((id) => repos.find((r) => r.id === id))
+            .filter(Boolean)
+            .map((r) => `${r!.ghOwner}/${r!.ghNome}`);
           const ultima = conversas.find((c) => c.botId === b.id);
           return (
             <article key={b.id} className={s.cartaoBot}>

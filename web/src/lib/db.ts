@@ -1,21 +1,56 @@
 import { MongoClient, type Db } from "mongodb";
-import { config } from "./config";
 
-// Em dev o Next recarrega módulos; guardamos o cliente no globalThis
-// para não abrir uma conexão nova a cada hot reload.
+function env(nome: string, padrao = ""): string {
+  const v = process.env[nome];
+  return v === undefined || v === "" ? padrao : v;
+}
+
+export const config = {
+  mongoUri: env("MONGODB_URI", "mongodb://localhost:27017"),
+  mongoDb: env("MONGODB_DB", "tatubot"),
+  jwt: {
+    issuer: env("JWT_ISSUER", "tatubot"),
+    audience: env("JWT_AUDIENCE", "tatubot-web"),
+    accessTtlMin: Number(env("JWT_ACCESS_TTL_MIN", "15")),
+    chavePrivadaPath: env("JWT_PRIVATE_KEY_PATH", "./data/chaves/jwt-privada.pem"),
+  },
+  refreshTtlDias: Number(env("REFRESH_TTL_DIAS", "7")),
+};
+
+// O web só mexe em `usuarios` e `refresh_tokens`; o resto do banco é da api.
+
+export type Papel = "admin" | "usuario";
+
+export interface Usuario {
+  _id: string;
+  nome: string;
+  email: string;
+  senhaHash: string;
+  papel: Papel;
+  criadoEm: Date;
+  atualizadoEm: Date;
+}
+
+export interface RefreshToken {
+  _id: string;
+  usuarioId: string;
+  familia: string;
+  tokenHash: string;
+  expiraEm: Date;
+  revogadoEm: Date | null;
+  substituidoPor: string | null;
+  criadoEm: Date;
+}
+
+// no dev o Next recarrega os módulos; o globalThis segura a conexão entre recargas
 const g = globalThis as unknown as { _mongo?: Promise<MongoClient>; _indices?: Promise<void> };
 
-export function cliente(): Promise<MongoClient> {
+export async function db(): Promise<Db> {
   if (!g._mongo) {
     g._mongo = new MongoClient(config.mongoUri, { maxPoolSize: 20 }).connect();
     g._mongo.catch(() => (g._mongo = undefined));
   }
-  return g._mongo;
-}
-
-export async function db(): Promise<Db> {
-  const c = await cliente();
-  const d = c.db(config.mongoDb);
+  const d = (await g._mongo).db(config.mongoDb);
   if (!g._indices) {
     g._indices = criarIndices(d);
     g._indices.catch(() => (g._indices = undefined));
@@ -24,9 +59,6 @@ export async function db(): Promise<Db> {
   return d;
 }
 
-// O web é dono só de `usuarios` e `refresh_tokens`. As outras coleções
-// (repositórios, bots, conversas, índice do RAG, fila) são do microsserviço
-// api/, que cria os próprios índices.
 async function criarIndices(d: Db) {
   await Promise.all([
     d.collection("usuarios").createIndex({ email: 1 }, { unique: true }),
@@ -35,6 +67,4 @@ async function criarIndices(d: Db) {
   ]);
 }
 
-export function agora() {
-  return new Date();
-}
+export const agora = () => new Date();

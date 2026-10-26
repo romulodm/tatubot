@@ -11,7 +11,6 @@ export default function Repos() {
   const { repos, recarregar, carregado } = useEspaco();
   const [aberto, setAberto] = useState<string | null>(null);
 
-  // Enquanto algo indexa, atualiza o status a cada 2 s.
   const indexando = repos.some((r) => r.status === "pendente" || r.status === "indexando");
   useEffect(() => {
     if (!indexando) return;
@@ -76,7 +75,17 @@ interface ResultadoBusca {
   linhaInicio: number;
   linhaFim: number;
   viaGrafo: boolean;
-  scores: { vetorial: number | null; textual: number | null; caminho: number | null; rrf: number; cobertura: number; final: number; posVetorial: number | null; posTextual: number | null; posCaminho: number | null };
+  scores: {
+    vetorial: number | null;
+    textual: number | null;
+    caminho: number | null;
+    rrf: number;
+    cobertura: number;
+    final: number;
+    posVetorial: number | null;
+    posTextual: number | null;
+    posCaminho: number | null;
+  };
 }
 
 const MOTIVOS: Record<string, string> = {
@@ -182,7 +191,10 @@ function DetalheRepo({ id, aoMudar, aoRemover }: { id: string; aoMudar: () => Pr
 
       <details className={s.bloco}>
         <summary>Atualizar a cada push (webhook do GitHub)</summary>
-        <p className={s.meta}>Em Settings → Webhooks do repositório, adicione esta URL com content type application/json, o segredo abaixo e o evento push. Em ambiente local, use um túnel como smee.io.</p>
+        <p className={s.meta}>
+          Em Settings → Webhooks do repositório, adicione esta URL com content type application/json, o segredo abaixo e o evento push. Em
+          ambiente local, use um túnel como smee.io.
+        </p>
         <div className={s.copiavel}>
           <span className="mono">{webhook}</span>
         </div>
@@ -210,9 +222,17 @@ function DetalheRepo({ id, aoMudar, aoRemover }: { id: string; aoMudar: () => Pr
 
       <details className={s.bloco}>
         <summary>Testar a busca</summary>
-        <p className={s.meta}>Mostra o ranking que o bot recebe: posição nas buscas vetorial, textual e por caminho, quanto da pergunta cada trecho cobre e a nota final.</p>
+        <p className={s.meta}>
+          Mostra o ranking que o bot recebe: posição nas buscas vetorial, textual e por caminho, quanto da pergunta cada trecho cobre e a
+          nota final.
+        </p>
         <form onSubmit={buscar} className={s.formBusca}>
-          <input className="entrada" value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="ex.: onde o token é verificado" />
+          <input
+            className="entrada"
+            value={consulta}
+            onChange={(e) => setConsulta(e.target.value)}
+            placeholder="ex.: onde o token é verificado"
+          />
           <button className="btn btn-contorno btn-peq" disabled={buscando}>
             {buscando ? "Buscando…" : "Buscar"}
           </button>
@@ -240,7 +260,12 @@ function DetalheRepo({ id, aoMudar, aoRemover }: { id: string; aoMudar: () => Pr
                   {busca.resultados.map((r) => (
                     <tr key={`${r.path}:${r.linhaInicio}`}>
                       <td>
-                        <a className="mono" href={`https://github.com/${repo.ghOwner}/${repo.ghNome}/blob/${repo.ultimoCommit}/${r.path}#L${r.linhaInicio}-L${r.linhaFim}`} target="_blank" rel="noreferrer">
+                        <a
+                          className="mono"
+                          href={`https://github.com/${repo.ghOwner}/${repo.ghNome}/blob/${repo.ultimoCommit}/${r.path}#L${r.linhaInicio}-L${r.linhaFim}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
                           {r.path}:{r.linhaInicio}-{r.linhaFim}
                         </a>
                         <div className={s.meta}>
