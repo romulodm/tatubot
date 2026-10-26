@@ -69,7 +69,6 @@ export function Espaco({ usuario, children }: { usuario: Estado["usuario"]; chil
       <div className={s.espaco}>
         <aside className={s.lateral} data-aberto={menuAberto}>
           <div className={s.lateralTopo}>
-            <Marca href="/app" />
             <button className={s.menuBotao} onClick={() => setMenuAberto((v) => !v)} aria-expanded={menuAberto} aria-label="Abrir menu">
               <span />
               <span />
