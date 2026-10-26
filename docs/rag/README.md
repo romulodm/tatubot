@@ -27,9 +27,9 @@ Tudo de RAG está no microsserviço `api/`:
 
 ```
 api/src/
-├── indexacao/   git.js, filtros.js, segredos.js, chunker.js, tokenizar.js, indexar.js
-├── llm/         embeddings.js (vetores), chat.js (cliente OpenAI-compatível)
-├── busca/       consulta.js (entender a pergunta), buscar.js (busca híbrida)
-├── agente/      executar.js (runtime), ferramentas.js, prompts.js, citacoes.js, extrativo.js
-└── fila/        fila.js, worker.js, consumidores.js (quem dispara cada etapa)
+├── indexacao/   git.js, filtros.js (filtros e segredos), chunker.js, indexar.js
+├── busca/       consulta.js (tokenizar e entender a pergunta), buscar.js (busca híbrida)
+├── agente/      executar.js (runtime), ferramentas.js, prompts.js, citacoes.js (+ resposta extrativa)
+├── llm.js       cliente OpenAI-compatível e embeddings
+└── fila.js      fila, worker e consumidores (quem dispara cada etapa)
 ```

@@ -18,7 +18,7 @@ Dois vetores apontam para direções; quanto menor o ângulo entre eles, mais pa
 A **similaridade de cosseno** vai de 1 (mesma direção) a 0 (nada a ver).
 
 Todo vetor é **normalizado** (comprimento 1) quando é gerado (`normalizar()` em
-`api/src/llm/embeddings.js`). Com isso o cosseno vira um produto escalar simples:
+`api/src/llm.js`). Com isso o cosseno vira um produto escalar simples:
 
 ```js
 let s = 0;
@@ -28,7 +28,7 @@ return s;
 
 ## Os dois provedores
 
-`api/src/llm/embeddings.js` esconde dois provedores atrás da mesma interface
+`api/src/llm.js` esconde dois provedores atrás da mesma interface
 (`embedDocumentos()` para o índice, `embedConsulta()` para a pergunta).
 
 ### Com OpenAI: `text-embedding-3-small`
@@ -94,20 +94,6 @@ está no banco (`cacheEmbeddings()`) e só pede os que faltam. Consequências:
 
 O resultado aparece na tela do repositório em "última indexação":
 `embeddingsGerados` e `embeddingsReaproveitados`.
-
-## Velocidade e falhas no meio do caminho
-
-Um repositório médio passa de 3 mil chunks. Com a OpenAI isso é rápido, desde que:
-
-- **lotes grandes e em paralelo**: até 128 textos (ou ~80 mil tokens) por requisição,
-  4 requisições ao mesmo tempo (`LOTE_TEXTOS`, `LOTE_CARACTERES`, `PARALELAS`);
-- **texto cortado em 16 mil caracteres**: o modelo aceita até 8191 tokens por texto e
-  recusa o lote inteiro se um passar. Um bloco de JSON minificado passa fácil;
-- **429 não derruba nada**: limite de taxa e erro 5xx são tentados de novo na hora,
-  respeitando o `Retry-After` (`api/src/llm/requisicao.js`);
-- **checkpoint**: cada lote pronto vai para a coleção `embeddings_checkpoint`. Se a
-  indexação cair no meio, a próxima tentativa continua de onde parou. Depois que os
-  chunks são gravados o checkpoint é apagado; sobras expiram em 7 dias.
 
 ## Pergunta e documento
 

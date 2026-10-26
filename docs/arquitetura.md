@@ -36,7 +36,7 @@ diferentes. Em desenvolvimento, `WORKER_MODE=inline` roda os dois no mesmo proce
 O Next ficou com o que ele faz bem: renderizar páginas e cuidar da sessão (cookies,
 refresh com rotação). O resto virou um microsserviço em Node puro, sem framework HTTP,
 como o `context.md` pede para o "indexador": roteador, parser de body, validação,
-logger e verificação de JWT escritos à mão (`api/src/http/`).
+logger e verificação de JWT escritos à mão (`api/src/http.js` e `api/src/auth.js`).
 
 Separar o worker da API HTTP evita que uma indexação pesada deixe as requisições lentas
 e permite escalar cada um à parte (`docker compose up --scale worker=3`: a fila garante
@@ -84,9 +84,8 @@ volume `jwt_chaves`). Não existe nenhum segredo de JWT em arquivo de configura�
 Para trocar a chave: apague o arquivo e reinicie o web; a api busca a nova pelo `kid`
 e todo mundo entra de novo.
 
-Arquivos: `web/src/lib/auth/chaves.ts` (par RSA e JWKS), `web/src/lib/auth/tokens.ts`
-(emissão e refresh), `api/src/http/jwks.js` (cache de chaves), `api/src/http/auth.js`
-(verificação à mão). Testes dos ataques clássicos (`alg: none`, HS256 com a chave
+Arquivos: `web/src/lib/auth.ts` (par RSA, JWKS, emissão e refresh) e `api/src/auth.js`
+(cache de chaves e verificação à mão). Testes dos ataques clássicos (`alg: none`, HS256 com a chave
 pública, assinatura adulterada, expirado, `aud` errado, `kid` desconhecido) em
 `api/test/jwt.test.js`.
 

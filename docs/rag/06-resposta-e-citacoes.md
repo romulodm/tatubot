@@ -27,14 +27,14 @@ pergunta ─► intenção = conversa? ─► sim ─► resposta curta, SEM bus
 
 "Oi, tudo bem?" não dispara busca: antes, disparava e devolvia trechos aleatórios. Com
 LLM, o modelo responde de forma breve e sem afirmar nada sobre o código; sem LLM, há
-respostas prontas (`api/src/agente/conversa.js`).
+respostas prontas (`api/src/agente/prompts.js`).
 
 ## Os três modos
 
 ### Extrativo (sem LLM)
 
 Quando não há `LLM_API_KEY`. Busca (10 trechos, ou 16 para "onde fica") e monta a
-resposta **sem modelo** (`api/src/agente/extrativo.js`):
+resposta **sem modelo** (`api/src/agente/citacoes.js`):
 
 - agrupa por arquivo;
 - para "onde fica", separa os arquivos que **são** do assunto (conceito no caminho ou

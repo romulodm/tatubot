@@ -25,7 +25,7 @@ X-Hub-Signature-256: sha256=<HMAC-SHA256(corpo cru, segredo do repositório)>
 ```
 
 Recalculamos sobre os **bytes exatos** recebidos e comparamos com `timingSafeEqual`
-(`api/src/dominio/webhook.js`). Repositório inexistente e assinatura errada recebem a
+(`api/src/rotas/repos.js`). Repositório inexistente e assinatura errada recebem a
 mesma resposta, para não revelar quais ids existem. Push em outra branch é ignorado.
 
 O GitHub entrega "pelo menos uma vez": o mesmo push pode chegar duas vezes. O header

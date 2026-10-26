@@ -16,7 +16,7 @@ Nenhuma rota HTTP indexa nada. Ela grava o estado e publica um evento na fila:
 | Remover | `repo.removido` | `DELETE /api/repos/:id` |
 
 O **worker** (`api/src/worker.js`) consome esses eventos com concorrência 1
-(`api/src/fila/consumidores.js`): duas sincronizações do mesmo repositório nunca
+(`api/src/fila.js`): duas sincronizações do mesmo repositório nunca
 rodam ao mesmo tempo. A requisição volta na hora; a tela de repositórios acompanha
 o campo `progresso` do documento.
 
@@ -79,7 +79,7 @@ fora do clone, por exemplo para `/etc/passwd`.
 
 ### 4. Varrer segredos
 
-`api/src/indexacao/segredos.js`. Antes de qualquer chunk, cada arquivo passa por:
+`api/src/indexacao/filtros.js`. Antes de qualquer chunk, cada arquivo passa por:
 
 - **nome**: `.env*` (exceto `.env.example`, `.sample`...), `*.pem`, `*.key`, `id_rsa`,
   `credentials.json`;
@@ -101,8 +101,8 @@ produção para uma API externa.
 
 ### 6. Gerar embeddings
 
-Com reaproveitamento pelo hash do texto (`embeddar()` em `indexar.js`), em lotes
-paralelos e com checkpoint. Assunto do [capítulo 04](04-embeddings.md).
+Em lotes de 32 textos, com reaproveitamento pelo hash do texto
+(`embeddar()` em `indexar.js`). Assunto do [capítulo 04](04-embeddings.md).
 
 ### 7. Gravar
 
@@ -124,9 +124,7 @@ invalida o cache da busca (ver [05](05-busca-hibrida.md#o-índice-em-memória)).
 | Erro | Tipo | O que acontece |
 |---|---|---|
 | Repositório ou branch não existe, repositório privado | `ErroPermanente` | Vai direto para a DLQ; repo fica com `status: "erro"` e a mensagem |
-| Limite de taxa da API (429), erro 5xx, rede instável | — | Tentado de novo na hora, até 6 vezes, respeitando o `Retry-After` (`llm/requisicao.js`) |
-| Chave inválida (401/403), sem crédito, requisição recusada (400) | `ErroPermanente` | Vai direto para a DLQ, com a mensagem na tela do repositório |
-| Rede fora do ar por mais tempo | `ErroTransitorio` | Volta para a fila: tenta de novo em 5 s, 30 s e 2 min, **continuando do checkpoint** |
+| Rede caiu, API de embedding fora do ar | `ErroTransitorio` | Volta para a fila: tenta de novo em 5 s, 30 s e 2 min |
 | Esgotou as tentativas | | DLQ; repo com `status: "erro"` |
 
 Um arquivo que falha ao ser lido não derruba a indexação: ele fica com `status: "erro"`

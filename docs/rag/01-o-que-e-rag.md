@@ -57,10 +57,10 @@ Duas coisas, e as duas vêm do fato de a fonte ser **código**:
 
 | Etapa | Arquivo | Capítulo |
 |---|---|---|
-| Disparar indexação | `api/src/fila/consumidores.js` | [02](02-indexacao.md) |
-| Clonar, filtrar, varrer segredos | `api/src/indexacao/indexar.js`, `git.js`, `filtros.js`, `segredos.js` | [02](02-indexacao.md) |
+| Disparar indexação | `api/src/fila.js` | [02](02-indexacao.md) |
+| Clonar, filtrar, varrer segredos | `api/src/indexacao/indexar.js`, `git.js`, `filtros.js` | [02](02-indexacao.md) |
 | Quebrar em chunks | `api/src/indexacao/chunker.js` | [03](03-chunking.md) |
-| Gerar embeddings | `api/src/llm/embeddings.js` | [04](04-embeddings.md) |
+| Gerar embeddings | `api/src/llm.js` | [04](04-embeddings.md) |
 | Entender a pergunta | `api/src/busca/consulta.js` | [05](05-busca-hibrida.md) |
 | Buscar | `api/src/busca/buscar.js` | [05](05-busca-hibrida.md) |
 | Responder | `api/src/agente/executar.js` | [06](06-resposta-e-citacoes.md) |
