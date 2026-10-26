@@ -31,7 +31,7 @@
   display: grid;
   gap: 1.1rem;
 }
-.form button {
+.form > button {
   margin-top: 0.4rem;
 }
 .trocar {
@@ -47,4 +47,32 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
+}
+.senha {
+  position: relative;
+}
+.senha input {
+  padding-right: 2.9rem;
+}
+.olho {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 0;
+  border-radius: var(--raio-peq);
+  background: none;
+  color: var(--cinza);
+  cursor: pointer;
+}
+.olho:hover {
+  color: var(--giz);
+}
+.olho:focus-visible {
+  outline: 2px solid var(--sinal);
+  outline-offset: -2px;
 }
