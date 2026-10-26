@@ -1,19 +1,13 @@
+import { log } from "./config.js";
 import { fechar } from "./db.js";
-import { log } from "./log.js";
-import { iniciarWorker } from "./fila/worker.js";
-import { consumidores } from "./fila/consumidores.js";
+import { iniciarWorker } from "./fila.js";
 
-// Ponto de entrada do worker em processo separado (npm run worker).
-// Mesmo código e mesma imagem Docker da API, outro comando.
-//
-// Separar ajuda de dois jeitos: uma indexação pesada não deixa a API lenta,
-// e dá para escalar os dois de forma independente (ex.: 1 API e 3 workers;
-// a fila no Mongo garante que cada evento vai para um worker só).
-
-const worker = iniciarWorker(consumidores);
+// Mesmo código da api, outro processo: indexação pesada não deixa a api lenta
+// e dá para escalar com `docker compose up --scale worker=3`.
+const worker = iniciarWorker();
 
 let desligando = false;
-for (const sinal of /** @type {const} */ (["SIGTERM", "SIGINT"])) {
+for (const sinal of ["SIGTERM", "SIGINT"]) {
   process.once(sinal, async () => {
     if (desligando) return;
     desligando = true;

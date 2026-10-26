@@ -1,37 +1,9 @@
-// Validação de citações: a última barreira contra a alucinação.
-//
-// O modelo é instruído a citar no formato [caminho:L10-L20]. Mas instrução
-// não é garantia: ele pode inventar um arquivo, ou citar linhas que nunca
-// viu. Então, depois que a resposta fica pronta, conferimos cada citação
-// contra as FONTES desta execução: os intervalos de linhas que a busca ou a
-// ferramenta ler_arquivo realmente devolveram.
-//
-//   - citação dentro de uma fonte: vira [[n]] e entra na lista de citações;
-//   - citação fora de qualquer fonte: é removida do texto (e registrada).
-//
-// Mais em docs/rag/06-resposta-e-citacoes.md.
+const REGEX = /\[((?:[^[\]\n`]|\[[^[\]\n`]*\])+?):L?(\d+)(?:\s*[-–]\s*L?(\d+))?\]|`([^`\n\s]+?):L(\d+)(?:\s*[-–]\s*L?(\d+))?`/g;
 
-/**
- * Intervalo de linhas que o bot EFETIVAMENTE viu nesta execução.
- * @typedef {import("../tipos.js").Citacao} Fonte
- */
-
-// Aceita [src/a.ts:L10-L20], [src/a.ts:10-20], [src/a.ts:L10] e a mesma coisa entre crases.
-// O caminho pode ter colchetes de rota dinâmica: [app/[locale]/page.tsx:L1-L9].
-const REGEX = /\[((?:[^\[\]\n`]|\[[^\[\]\n`]*\])+?):L?(\d+)(?:\s*[-–]\s*L?(\d+))?\]|`([^`\n\s]+?):L(\d+)(?:\s*[-–]\s*L?(\d+))?`/g;
-
-/**
- * @param {string} texto resposta do modelo
- * @param {Fonte[]} fontes
- * @returns {{ texto: string, citacoes: Fonte[], removidas: string[] }}
- */
 export function validarCitacoes(texto, fontes) {
-  /** @type {Fonte[]} */
   const citacoes = [];
-  const chave = (/** @type {Fonte} */ c) => `${c.repoId}|${c.path}|${c.linhaInicio}|${c.linhaFim}`;
-  /** @type {Map<string, number>} */
+  const chave = (c) => `${c.repoId}|${c.path}|${c.linhaInicio}|${c.linhaFim}`;
   const vistas = new Map();
-  /** @type {string[]} */
   const removidas = [];
 
   const novo = texto.replace(REGEX, (bruto, p1, a1, b1, p2, a2, b2) => {
@@ -40,29 +12,27 @@ export function validarCitacoes(texto, fontes) {
     const fim = Number(b1 ?? b2 ?? ini);
     const [a, b] = ini <= fim ? [ini, fim] : [fim, ini];
 
-    // Casa o caminho exato ou um sufixo (o modelo às vezes omite ou acrescenta "owner/repo/").
-    const candidatas = fontes.filter((f) => f.path === caminho || caminho.endsWith("/" + f.path) || `${f.ghOwner}/${f.ghNome}/${f.path}` === caminho);
-    // Prefere a fonte que contém o intervalo inteiro; senão, a de maior sobreposição.
-    const sobreposicao = (/** @type {Fonte} */ x) => Math.min(b, x.linhaFim) - Math.max(a, x.linhaInicio) + 1;
+    const candidatas = fontes.filter(
+      (f) => f.path === caminho || caminho.endsWith("/" + f.path) || `${f.ghOwner}/${f.ghNome}/${f.path}` === caminho,
+    );
+    const sobreposicao = (x) => Math.min(b, x.linhaFim) - Math.max(a, x.linhaInicio) + 1;
     const f = candidatas.filter((x) => sobreposicao(x) > 0).sort((x, y) => sobreposicao(y) - sobreposicao(x))[0];
     if (!f) {
       removidas.push(bruto);
       return "";
     }
-    // Recorta ao que foi realmente visto: citar L5-L15 tendo lido L10-L40 vira L10-L15.
     const c = { ...f, linhaInicio: Math.max(a, f.linhaInicio), linhaFim: Math.min(b, f.linhaFim) };
     const k = chave(c);
     if (!vistas.has(k)) {
       vistas.set(k, citacoes.length);
       citacoes.push(c);
     }
-    return `[[${/** @type {number} */ (vistas.get(k)) + 1}]]`;
+    return `[[${vistas.get(k) + 1}]]`;
   });
 
   return { texto: limparEspacos(novo), citacoes, removidas };
 }
 
-/** @param {string} p */
 function normalizarCaminho(p) {
   return p
     .trim()
@@ -70,8 +40,6 @@ function normalizarCaminho(p) {
     .replace(/^`|`$/g, "");
 }
 
-// Tirar uma citação deixa sobras como "texto ." ou "()"; limpamos.
-/** @param {string} t */
 function limparEspacos(t) {
   return t
     .replace(/[ \t]+([.,;:])/g, "$1")
@@ -80,11 +48,137 @@ function limparEspacos(t) {
     .trim();
 }
 
-/**
- * Link para o GitHub fixado no commit que foi lido (não na branch), então
- * continua apontando para as linhas certas mesmo depois de novos pushes.
- * @param {Fonte} c
- */
-export function linkGithub(c) {
-  return `https://github.com/${c.ghOwner}/${c.ghNome}/blob/${c.commitSha}/${c.path}#L${c.linhaInicio}-L${c.linhaFim}`;
+// ---------- resposta extrativa (sem LLM) ----------
+
+const TIPOS = { funcao: "função", classe: "classe", metodo: "método", modulo: "trecho", secao_doc: "seção" };
+
+export function respostaExtrativa(saida, primeiraResposta) {
+  const { resultados, consulta, faltando } = saida;
+  const frase = fraseDoAssunto(consulta);
+
+  if (!resultados.length) {
+    const termos = [...new Set(consulta.conceitos.flatMap((c) => c.termos))].slice(0, 10);
+    return [
+      `Não encontrei nada sobre **${frase}** nos repositórios deste bot.`,
+      termos.length ? `Procurei por: ${termos.map((t) => `\`${t}\``).join(", ")}.` : "",
+      "Tente usar o nome de um componente, função, rota ou pasta.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const arquivos = agruparPorArquivo(resultados.filter((r) => !r.viaGrafo));
+  const linhas = [];
+  const localizar = consulta.intencao === "localizar";
+  const nucleo = localizar ? arquivos.filter((a) => a.trechos.some((t) => t.definicao)) : arquivos;
+  const usos = localizar && nucleo.length ? arquivos.filter((a) => !nucleo.includes(a)) : [];
+  const principais = nucleo.length ? nucleo : arquivos;
+
+  if (faltando.length) {
+    linhas.push(`Não encontrei nada que fale de ${faltando.map((f) => `**${f}**`).join(" e ")} junto com o resto. O mais próximo:`, "");
+  } else if (localizar) {
+    linhas.push(
+      principais.length === 1
+        ? `**${capital(frase)}** está em um arquivo:`
+        : `**${capital(frase)}** está nestes ${principais.length} arquivos:`,
+      "",
+    );
+  } else {
+    linhas.push(`O que encontrei sobre **${frase}**:`, "");
+  }
+
+  for (const a of principais.slice(0, localizar ? 8 : 5)) {
+    const trechoCodigo = a.trechos.find(t_codigo) ?? a.trechos[0];
+    const melhor = trechoCodigo.chunk;
+    const simbolos = [
+      ...new Set(
+        a.trechos
+          .filter(t_codigo)
+          .map((t) => t.chunk.simbolo)
+          .filter((x) => !!x)
+          .map(limpar),
+      ),
+    ].slice(0, 4);
+    const cit = `[${melhor.path}:L${melhor.linhaInicio}-L${melhor.linhaFim}]`;
+    const doc = descricao(a.trechos);
+    if (localizar) {
+      linhas.push(
+        `- \`${melhor.path}\`${simbolos.length ? `, com ${simbolos.map((x) => `\`${x}\``).join(", ")}` : ""} ${cit}${doc ? `: ${doc}` : ""}`,
+      );
+    } else {
+      const quem =
+        simbolos.length && t_codigo(trechoCodigo)
+          ? `${TIPOS[melhor.tipo] ?? "trecho"} \`${limpar(melhor.simbolo ?? simbolos[0])}\` em \`${melhor.path}\``
+          : `\`${melhor.path}\``;
+      linhas.push(`- ${capital(quem)} ${cit}${doc ? `: ${doc}` : ""}`);
+    }
+  }
+
+  if (usos.length) {
+    const lista = usos.slice(0, 5).map((a) => {
+      const c = (a.trechos.find(t_codigo) ?? a.trechos[0]).chunk;
+      return `\`${nomeCurto(c.path)}\` [${c.path}:L${c.linhaInicio}-L${c.linhaFim}]`;
+    });
+    linhas.push("", `Também é usado em ${lista.join(", ")}.`);
+  }
+
+  if (primeiraResposta) {
+    linhas.push(
+      "",
+      "Sem um modelo de linguagem configurado eu localizo o código, mas não explico o que ele faz. Com uma `LLM_API_KEY` configurada as respostas vêm explicadas.",
+    );
+  }
+  return linhas.join("\n");
 }
+
+function t_codigo(r) {
+  return r.chunk.tipo !== "secao_doc" && r.chunk.tipo !== "modulo";
+}
+
+function agruparPorArquivo(rs) {
+  const mapa = new Map();
+  for (const r of rs) {
+    const k = `${r.repo._id}|${r.chunk.path}`;
+    if (!mapa.has(k)) mapa.set(k, { path: r.chunk.path, trechos: [] });
+    mapa.get(k).trechos.push(r);
+  }
+  return [...mapa.values()];
+}
+
+function descricao(trechos) {
+  for (const t of trechos) {
+    if (!t_codigo(t)) continue;
+    const inicio = t.chunk.conteudo.split("\n").slice(0, 3).join("\n");
+    const m = inicio.match(/^\s*(?:\/\*\*?|\*|\/\/\/?)\s*([A-ZÀ-Ú][^\n*]{15,140})/m);
+    if (m && !/^métodos:/i.test(m[1])) return m[1].trim().replace(/[`*]/g, "").replace(/\.?$/, ".");
+  }
+  return "";
+}
+
+const CONECTORES = new Set(["de", "da", "do", "das", "dos", "e", "para", "com", "em", "no", "na", "nos", "nas", "a", "o", "os", "as"]);
+
+export function fraseDoAssunto(c) {
+  if (!c.conceitos.length) return c.original.trim();
+  const palavras = c.original
+    .replace(/[?!.,;:]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const ehConceito = (w) => c.conceitos.some((k) => k.palavra === w);
+  const ini = palavras.findIndex(ehConceito);
+  const fim = palavras.length - 1 - [...palavras].reverse().findIndex(ehConceito);
+  const trecho = palavras.slice(ini, fim + 1).filter((w) => ehConceito(w) || CONECTORES.has(w.toLowerCase()));
+  return trecho.join(" ").replace(/[`*]/g, "").slice(0, 80);
+}
+
+const GENERICOS = /^(page|route|layout|index|loading|error|actions|types|utils|constants)\.\w+$/;
+function nomeCurto(path) {
+  const partes = path.split("/").filter((p) => !/^\[.*\]$/.test(p));
+  return GENERICOS.test(partes.at(-1) ?? "") ? partes.slice(-3).join("/") : (partes.at(-1) ?? path);
+}
+
+const limpar = (s) =>
+  s
+    .replace(/ \(parte \d+\)$/, "")
+    .replace(/[`*]/g, "")
+    .slice(0, 60);
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);

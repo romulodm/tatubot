@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { validarCitacoes, linkGithub } from "../src/agente/citacoes.js";
+import { validarCitacoes } from "../src/agente/citacoes.js";
 
 const fonte = { repoId: "r1", ghOwner: "acme", ghNome: "api", path: "src/auth.ts", linhaInicio: 10, linhaFim: 40, commitSha: "abc123" };
 
@@ -25,10 +25,6 @@ describe("validação de citações", () => {
     assert.equal(r.citacoes.length, 1);
     assert.equal(r.citacoes[0].linhaInicio, 10);
     assert.equal(r.texto, "a [[1]] b [[1]]");
-  });
-
-  it("monta link do GitHub fixado no commit", () => {
-    assert.equal(linkGithub(fonte), "https://github.com/acme/api/blob/abc123/src/auth.ts#L10-L40");
   });
 
   it("escolhe a fonte que cobre o intervalo citado", () => {

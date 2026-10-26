@@ -1,8 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { analisarConsulta, cobre, raiz } from "../src/busca/consulta.js";
-import { fraseDoAssunto } from "../src/agente/extrativo.js";
-import { respostaConversaLocal } from "../src/agente/conversa.js";
+import { fraseDoAssunto } from "../src/agente/citacoes.js";
+import { respostaConversaLocal } from "../src/agente/prompts.js";
 
 describe("intenção", () => {
   for (const t of ["Oi, como vai?", "olá!", "bom dia", "valeu!", "obrigado", "o que você faz?", "tudo bem?"]) {

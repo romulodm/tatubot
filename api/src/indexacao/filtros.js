@@ -1,9 +1,5 @@
 import path from "node:path";
 
-// Primeiro filtro da indexação: o que NÃO vale a pena ler.
-// Dependências, lockfiles, binários e minificados só fariam barulho na busca
-// (e gastariam embedding à toa). Ver docs/rag/02-indexacao.md.
-
 // prettier-ignore
 const DIRS_IGNORADOS = new Set(["node_modules", "dist", "build", ".git", ".next", "out", "coverage", "vendor", "target", "__pycache__", ".venv", ".turbo"]);
 // prettier-ignore
@@ -15,55 +11,21 @@ const EXT_BINARIAS = new Set([
   ".class", ".jar", ".wasm", ".bin", ".psd", ".sqlite", ".db",
 ]);
 const MINIFICADO = /\.min\.(js|css)$|\.map$/;
-// SVG é texto, mas é desenho: path data não responde pergunta sobre código
-// e ainda estoura o limite de tokens do embedding.
-const IMAGEM_TEXTO = /\.svg$/i;
 
-/**
- * Decisão pelo caminho, antes de abrir o arquivo (barato).
- * @param {string} p caminho relativo à raiz do repositório
- * @returns {string | null} motivo para ignorar, ou null se pode seguir
- */
 export function motivoIgnorarCaminho(p) {
   const partes = p.split("/");
   if (partes.slice(0, -1).some((d) => DIRS_IGNORADOS.has(d))) return "diretorio_ignorado";
   const nome = partes[partes.length - 1];
   if (LOCKFILES.has(nome)) return "lockfile";
   if (MINIFICADO.test(nome)) return "minificado";
-  if (IMAGEM_TEXTO.test(nome)) return "imagem";
   if (EXT_BINARIAS.has(path.extname(nome).toLowerCase())) return "binario";
   return null;
 }
 
-/**
- * Decisão pelo conteúdo:
- *   - tamanho;
- *   - byte nulo nos primeiros 8 KB (texto de verdade não tem byte 0; é a mesma
- *     heurística que o git usa);
- *   - linha gigante: arquivo gerado ou minificado sem ".min" no nome, ou uma
- *     lista de dados numa linha só (ex.: JSON com 5 mil domínios). Ninguém
- *     lê isso como código, e um trecho assim não cabe no embedding.
- * @param {Buffer} buf
- * @param {number} maxBytes
- */
 export function motivoIgnorarConteudo(buf, maxBytes) {
   if (buf.length > maxBytes) return "grande_demais";
   if (buf.subarray(0, 8192).includes(0)) return "binario";
-  if (maiorLinha(buf) > MAX_LINHA) return "linha_longa";
   return null;
-}
-
-const MAX_LINHA = 5_000;
-
-/** @param {Buffer} buf */
-function maiorLinha(buf) {
-  let maior = 0;
-  let inicio = 0;
-  for (let i = buf.indexOf(10); i !== -1; i = buf.indexOf(10, i + 1)) {
-    maior = Math.max(maior, i - inicio);
-    inicio = i + 1;
-  }
-  return Math.max(maior, buf.length - inicio);
 }
 
 // prettier-ignore
@@ -77,7 +39,35 @@ const LINGUAGENS = {
   ".html": "html", ".vue": "vue", ".svelte": "svelte", ".prisma": "prisma",
 };
 
-/** @param {string} p */
 export function linguagem(p) {
-  return /** @type {Record<string, string>} */ (LINGUAGENS)[path.extname(p).toLowerCase()] ?? "texto";
+  return LINGUAGENS[path.extname(p).toLowerCase()] ?? "texto";
+}
+
+// ---------- segredos ----------
+// Arquivo com segredo não entra no índice (e nunca vai para o LLM).
+
+const NOMES = [/^\.env(\..+)?$/i, /\.pem$/i, /\.key$/i, /^id_(rsa|dsa|ecdsa|ed25519)$/, /\.p12$/i, /\.pfx$/i, /^credentials(\.json)?$/i];
+const EXEMPLO = /\.(example|sample|template|dist)$/i;
+
+const PADROES = [
+  ["chave_privada", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
+  ["github_token", /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{60,}\b/],
+  ["openai_key", /\bsk-(proj-)?[A-Za-z0-9_-]{32,}\b/],
+  ["aws_access_key", /\bAKIA[0-9A-Z]{16}\b/],
+  ["slack_token", /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/],
+  ["google_api_key", /\bAIza[0-9A-Za-z_-]{35}\b/],
+  ["stripe_key", /\b[rs]k_live_[0-9A-Za-z]{24,}\b/],
+  ["url_com_senha", /\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s:@/]{6,}@[^\s/]+/i],
+];
+
+export function detectarSegredo(path, conteudo) {
+  const nome = path.split("/").pop() ?? path;
+  if (!EXEMPLO.test(nome) && NOMES.some((r) => r.test(nome))) return "arquivo_sensivel";
+  for (const [tipo, r] of PADROES) {
+    const achado = conteudo.match(r);
+    if (!achado) continue;
+    if (tipo === "url_com_senha" && /:(pass(word)?|senha|secret|changeme|example|postgres|root|guest)@/i.test(achado[0])) continue;
+    return tipo;
+  }
+  return null;
 }

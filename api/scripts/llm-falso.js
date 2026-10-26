@@ -1,14 +1,11 @@
-// LLM falso compatível com a API da OpenAI, para testar os modos pipeline e
-// agente sem gastar crédito nem baixar modelo. Responde de forma determinística.
-//
-// Uso: npm run llm-falso   ->   LLM_BASE_URL=http://localhost:11999/v1 LLM_API_KEY=qualquer
+// LLM falso compatível com a API da OpenAI, para testar os modos pipeline e agente sem gastar crédito.
+// Uso: npm run llm-falso; depois LLM_API_KEY=qualquer LLM_BASE_URL=http://localhost:11999/v1 LLM_EMBED_MODEL=local npm run dev
 import http from "node:http";
 
 const porta = Number(process.argv[2] ?? 11999);
 
 function responder(corpo) {
   const msgs = corpo.messages;
-  const ultima = msgs.at(-1);
   const ferramentas = msgs.filter((m) => m.role === "tool");
   if (corpo.max_tokens <= 60) return { conteudo: "decoratorName jwt decorator fastifyJwt" };
   if (corpo.tools && ferramentas.length === 0) {
@@ -17,9 +14,13 @@ function responder(corpo) {
   }
   if (corpo.tools && ferramentas.length === 1) {
     const m = /^1\. (\S+) (\S+):L(\d+)-L(\d+)/m.exec(ferramentas[0].content);
-    if (m) return { chamadas: [{ id: "c2", nome: "ler_arquivo", args: { repo: m[1], path: m[2], linhaInicio: Number(m[3]), linhaFim: Number(m[3]) + 9 } }] };
+    if (m)
+      return {
+        chamadas: [
+          { id: "c2", nome: "ler_arquivo", args: { repo: m[1], path: m[2], linhaInicio: Number(m[3]), linhaFim: Number(m[3]) + 9 } },
+        ],
+      };
   }
-  // resposta final: cita o primeiro intervalo visto e inventa um que deve ser removido
   const texto = msgs.map((m) => m.content ?? "").join("\n");
   const lido = /^(\S+) \(L(\d+)-L(\d+)\)/m.exec(ferramentas.at(-1)?.content ?? "");
   const trecho = /arquivo="([^"]+)" linhas="(\d+)-(\d+)"/.exec(texto);
@@ -43,7 +44,11 @@ http
           ? {
               role: "assistant",
               content: null,
-              tool_calls: r.chamadas.map((c) => ({ id: c.id, type: "function", function: { name: c.nome, arguments: JSON.stringify(c.args) } })),
+              tool_calls: r.chamadas.map((c) => ({
+                id: c.id,
+                type: "function",
+                function: { name: c.nome, arguments: JSON.stringify(c.args) },
+              })),
             }
           : { role: "assistant", content: r.conteudo };
         return res.end(JSON.stringify({ choices: [{ message }], usage: uso }));

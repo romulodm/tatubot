@@ -2,17 +2,13 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { criarApp } from "../src/app.js";
 
-// Sobe o app numa porta aleatória e faz requisições de verdade.
-// Estes casos não chegam a tocar no banco: a requisição é barrada antes.
-
-/** @type {import("node:http").Server} */
 let servidor;
 let base = "";
 
 before(async () => {
   servidor = criarApp();
   await new Promise((ok) => servidor.listen(0, () => ok(null)));
-  const endereco = /** @type {import("node:net").AddressInfo} */ (servidor.address());
+  const endereco = servidor.address();
   base = `http://127.0.0.1:${endereco.port}`;
 });
 

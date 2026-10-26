@@ -4,34 +4,9 @@ import { db } from "../db.js";
 import { buscar } from "../busca/buscar.js";
 import { dirRepo } from "../indexacao/indexar.js";
 
-// Ferramentas do modo agente.
-//
-// Cada ferramenta recebe o contexto da execução com os repositórios
-// PERMITIDOS (os do bot) e nunca acessa nada fora deles, mesmo que o modelo
-// peça. É aqui que a defesa contra prompt injection realmente mora: um
-// arquivo malicioso pode convencer o modelo a PEDIR o repositório de outra
-// pessoa, mas a ferramenta não tem como entregar.
-
-/** @typedef {import("../tipos.js").Repositorio} Repositorio */
-/** @typedef {import("./citacoes.js").Fonte} Fonte */
-
-/**
- * @typedef {object} Contexto
- * @property {Repositorio[]} repos repositórios que o bot pode ler (e já indexados)
- */
-
-/**
- * @typedef {object} SaidaFerramenta
- * @property {string} texto vai para o modelo
- * @property {Fonte[]} fontes intervalos vistos (passam a ser citáveis)
- * @property {string} descricao aparece na trilha do chat
- */
-
 const MAX_LINHAS_LEITURA = 200;
 
-// Descrição das ferramentas no formato que a API de chat entende (JSON Schema).
-// O modelo lê `description` para decidir quando usar cada uma.
-/** @type {import("../llm/chat.js").Ferramenta[]} */
+// Ferramentas do modo agente. Toda leitura registra o trecho visto, que é o que o bot pode citar.
 export const definicoes = [
   fn(
     "buscar_semantico",
@@ -81,23 +56,10 @@ export const definicoes = [
   ),
 ];
 
-/**
- * @param {string} name @param {string} description
- * @param {Record<string, unknown>} properties @param {string[]} required
- * @returns {import("../llm/chat.js").Ferramenta}
- */
 function fn(name, description, properties, required) {
   return { type: "function", function: { name, description, parameters: { type: "object", properties, required } } };
 }
 
-/**
- * Executa a ferramenta pedida pelo modelo. Erro vira texto para o modelo
- * (ele pode tentar de outro jeito), nunca derruba a execução.
- * @param {string} nome
- * @param {Record<string, unknown>} args argumentos que o MODELO gerou: não confiar
- * @param {Contexto} ctx
- * @returns {Promise<SaidaFerramenta>}
- */
 export async function executarFerramenta(nome, args, ctx) {
   try {
     switch (nome) {
@@ -115,14 +77,10 @@ export async function executarFerramenta(nome, args, ctx) {
         return { texto: `Ferramenta desconhecida: ${nome}`, fontes: [], descricao: `ferramenta desconhecida ${nome}` };
     }
   } catch (e) {
-    return { texto: `Erro: ${/** @type {Error} */ (e).message}`, fontes: [], descricao: `erro em ${nome}` };
+    return { texto: `Erro: ${e.message}`, fontes: [], descricao: `erro em ${nome}` };
   }
 }
 
-/**
- * "acme/api" (ou só "api") -> o repositório, desde que esteja na lista do bot.
- * @param {unknown} arg @param {Contexto} ctx
- */
 function resolverRepo(arg, ctx) {
   if (ctx.repos.length === 1 && !arg) return ctx.repos[0];
   const s = String(arg ?? "")
@@ -130,11 +88,13 @@ function resolverRepo(arg, ctx) {
     .replace(/\.git$/, "")
     .toLowerCase();
   const r = ctx.repos.find((x) => `${x.ghOwner}/${x.ghNome}`.toLowerCase() === s || x.ghNome.toLowerCase() === s);
-  if (!r) throw new Error(`repositório não disponível para este bot. Disponíveis: ${ctx.repos.map((x) => `${x.ghOwner}/${x.ghNome}`).join(", ")}`);
+  if (!r)
+    throw new Error(
+      `repositório não disponível para este bot. Disponíveis: ${ctx.repos.map((x) => `${x.ghOwner}/${x.ghNome}`).join(", ")}`,
+    );
   return r;
 }
 
-/** @param {Repositorio} r @param {string} p @param {number} a @param {number} b @returns {Fonte} */
 const fonteDe = (r, p, a, b) => ({
   repoId: r._id,
   ghOwner: r.ghOwner,
@@ -145,7 +105,6 @@ const fonteDe = (r, p, a, b) => ({
   commitSha: r.ultimoCommit ?? "HEAD",
 });
 
-/** @param {string} consulta @param {number} k @param {Contexto} ctx @returns {Promise<SaidaFerramenta>} */
 async function buscarSemantico(consulta, k, ctx) {
   const { resultados } = await buscar({ repoIds: ctx.repos.map((r) => r._id), consulta, k, grafo: false });
   const fontes = [];
@@ -170,7 +129,6 @@ async function buscarSemantico(consulta, k, ctx) {
   return { texto: linhas.join("\n\n") || "Nada encontrado.", fontes, descricao: `buscando "${consulta.slice(0, 60)}"` };
 }
 
-/** @param {string} repoId @param {Record<string, unknown>} [filtro] @returns {Promise<import("../tipos.js").Arquivo[]>} */
 async function arquivosIndexados(repoId, filtro = {}) {
   return (await db())
     .collection("arquivos")
@@ -178,8 +136,6 @@ async function arquivosIndexados(repoId, filtro = {}) {
     .toArray();
 }
 
-// Como um grep: lê os arquivos indexados do clone e procura o termo literal.
-/** @param {string} termo @param {Contexto} ctx @returns {Promise<SaidaFerramenta>} */
 async function buscarTexto(termo, ctx) {
   if (termo.trim().length < 2) return { texto: "Termo muito curto.", fontes: [], descricao: "busca textual vazia" };
   const alvo = termo.toLowerCase();
@@ -198,16 +154,19 @@ async function buscarTexto(termo, ctx) {
       });
     }
   }
-  return { texto: achados.join("\n") || `"${termo}" não aparece nos arquivos indexados.`, fontes, descricao: `procurando "${termo.slice(0, 40)}" no código` };
+  return {
+    texto: achados.join("\n") || `"${termo}" não aparece nos arquivos indexados.`,
+    fontes,
+    descricao: `procurando "${termo.slice(0, 40)}" no código`,
+  };
 }
 
-/** @param {Record<string, unknown>} args @param {Contexto} ctx @returns {Promise<SaidaFerramenta>} */
 async function lerArquivo(args, ctx) {
   const r = resolverRepo(args.repo, ctx);
   const p = String(args.path ?? "").replace(/^\.?\//, "");
-  // Só arquivos indexados: arquivos ignorados por segredo NUNCA são lidos.
   const [arq] = await arquivosIndexados(r._id, { path: p });
-  if (!arq) return { texto: `Arquivo ${p} não existe ou não está indexado (pode ter sido ignorado).`, fontes: [], descricao: `tentou ler ${p}` };
+  if (!arq)
+    return { texto: `Arquivo ${p} não existe ou não está indexado (pode ter sido ignorado).`, fontes: [], descricao: `tentou ler ${p}` };
   const linhas = (await lerSeguro(r, p))?.split("\n") ?? [];
   const a = Math.max(1, Number(args.linhaInicio) || 1);
   const b = Math.min(linhas.length, Number(args.linhaFim) || a + MAX_LINHAS_LEITURA - 1, a + MAX_LINHAS_LEITURA - 1);
@@ -219,9 +178,6 @@ async function lerArquivo(args, ctx) {
   return { texto: `${p} (L${a}-L${b})\n${corpo}${sufixo}`, fontes: [fonteDe(r, p, a, b)], descricao: `lendo ${p} L${a}-${b}` };
 }
 
-// Monta a listagem a partir da coleção `arquivos` (não do disco), então
-// mostra também os ignorados, marcados como tal.
-/** @param {Record<string, unknown>} args @param {Contexto} ctx @returns {Promise<SaidaFerramenta>} */
 async function listarDiretorio(args, ctx) {
   const r = resolverRepo(args.repo, ctx);
   const base = String(args.path ?? "")
@@ -241,9 +197,6 @@ async function listarDiretorio(args, ctx) {
   return { texto: lista.join("\n") || "Diretório vazio ou inexistente.", fontes: [], descricao: `listando ${base || "raiz"}` };
 }
 
-// Usa as `referencias` que o chunker extraiu da AST: quem define o símbolo,
-// o que ele chama e quem o chama.
-/** @param {Record<string, unknown>} args @param {Contexto} ctx @returns {Promise<SaidaFerramenta>} */
 async function referencias(args, ctx) {
   const r = resolverRepo(args.repo, ctx);
   const simbolo = String(args.simbolo ?? "").trim();
@@ -267,16 +220,10 @@ async function referencias(args, ctx) {
   return { texto, fontes, descricao: `rastreando referências de ${simbolo}` };
 }
 
-/**
- * Lê um arquivo do clone garantindo que o caminho resolvido continua DENTRO
- * da pasta do repositório ("../../etc/passwd" não passa).
- * @param {Repositorio} r @param {string} p
- * @returns {Promise<string | null>}
- */
 async function lerSeguro(r, p) {
   const dir = dirRepo(r._id);
   const abs = path.resolve(dir, p);
-  if (!abs.startsWith(dir + path.sep)) return null; // ../../etc/passwd
+  if (!abs.startsWith(dir + path.sep)) return null;
   try {
     return await readFile(abs, "utf8");
   } catch {

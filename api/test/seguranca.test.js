@@ -1,10 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { detectarSegredo } from "../src/indexacao/segredos.js";
-import { motivoIgnorarCaminho, motivoIgnorarConteudo } from "../src/indexacao/filtros.js";
-import { assinaturaValida } from "../src/dominio/webhook.js";
-import { REGEX_REPO_URL } from "../src/http/validar.js";
+import { detectarSegredo, motivoIgnorarCaminho, motivoIgnorarConteudo } from "../src/indexacao/filtros.js";
+import { assinaturaValida } from "../src/rotas/repos.js";
+import { REGEX_REPO_URL } from "../src/http.js";
 
 describe("varredura de segredos", () => {
   it("ignora .env mas não .env.example", () => {
@@ -30,9 +29,6 @@ describe("filtros", () => {
     assert.equal(motivoIgnorarCaminho("public/logo.png"), "binario");
     assert.equal(motivoIgnorarCaminho("src/index.ts"), null);
     assert.equal(motivoIgnorarConteudo(Buffer.from([65, 0, 66]), 1000), "binario");
-    assert.equal(motivoIgnorarCaminho("public/flags/es.svg"), "imagem");
-    assert.equal(motivoIgnorarConteudo(Buffer.from(`[${'"exemplo.com",'.repeat(1000)}]`), 200_000), "linha_longa");
-    assert.equal(motivoIgnorarConteudo(Buffer.from("const a = 1;\nconst b = 2;\n"), 200_000), null);
   });
 });
 

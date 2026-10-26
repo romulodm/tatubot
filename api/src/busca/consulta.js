@@ -1,31 +1,39 @@
-import { tokenizar } from "../indexacao/tokenizar.js";
+const STOP = new Set(
+  (
+    "a o e de da do das dos que em um uma para com por no na nos nas se como mais ao os as é ou the of and to in is it for on with as be this that are by an at from or not " +
+    "const let var function return import export from if else new true false null undefined"
+  ).split(" "),
+);
 
-// Análise da pergunta antes da busca:
-//   1. separa as palavras de conteúdo das palavras de pergunta ("onde", "fica", "arquivos");
-//   2. agrupa cada palavra em um CONCEITO com variações e sinônimos técnicos em inglês
-//      ("autenticação" -> auth, login, signin, session...), porque a pergunta costuma vir
-//      em português e o código está em inglês;
-//   3. detecta a intenção: localizar arquivos, explicar código ou só conversar.
-//
-// Ver docs/rag/05-busca-hibrida.md, seção "Antes de buscar: entender a pergunta".
+export function tokenizar(texto) {
+  const saida = [];
+  const brutos = texto.match(/[A-Za-z_$][A-Za-z0-9_$]*|[0-9]+|[À-ÿ]+/g) ?? [];
+  for (const b of brutos) {
+    const inteiro = normalizar(b);
+    if (inteiro.length < 2 || inteiro.length > 60) continue;
+    const partes = b
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .split(/[\s_$]+/)
+      .map(normalizar)
+      .filter((p) => p.length >= 2);
+    if (partes.length > 1) {
+      saida.push(inteiro);
+      for (const p of partes) if (!STOP.has(p)) saida.push(p);
+    } else if (!STOP.has(inteiro)) {
+      saida.push(inteiro);
+    }
+  }
+  return saida;
+}
 
-/** @typedef {"conversa" | "localizar" | "explicar"} Intencao */
+export function normalizar(s) {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
 
-/**
- * @typedef {object} Conceito
- * @property {string} palavra como o usuário escreveu
- * @property {string[]} termos raízes que contam como presença do conceito
- */
-
-/**
- * @typedef {object} Consulta
- * @property {string} original
- * @property {Intencao} intencao
- * @property {Conceito[]} conceitos
- * @property {string[]} termosBusca todos os termos, para o BM25
- */
-
-// Palavras que dizem COMO perguntar, não O QUE procurar.
 const PALAVRAS_DE_PERGUNTA = new Set(
   (
     "onde fica ficam esta estao localizado localizada localiza cade qual quais que quem como porque por quando " +
@@ -39,9 +47,8 @@ const PALAVRAS_DE_PERGUNTA = new Set(
   ).split(" "),
 );
 
-// Glossário PT -> EN (chaves são raízes; ver raiz()). Didático e determinístico:
-// cobre o vocabulário mais comum de aplicações web.
-/** @type {Record<string, string[]>} */
+// A pergunta vem em português e o código está em inglês: cada raiz vira os termos
+// que costumam aparecer no código ("autenticação" -> auth, login, session...).
 const GLOSSARIO = {
   autentic: ["auth", "login", "signin", "session", "authenticate", "credential"],
   login: ["auth", "login", "signin", "session"],
@@ -151,7 +158,6 @@ const GLOSSARIO = {
   backup: ["backup", "dump", "restore"],
 };
 
-// Testadas contra o texto sem acentos.
 const CONVERSA = [
   /^(oi+|ola|e ai|eai|opa|hey|hello|hi|salve|fala)\b/i,
   /\b(bom dia|boa tarde|boa noite|tudo bem|tudo certo|tudo bom|como vai|como voce esta|beleza)\b/i,
@@ -162,13 +168,7 @@ const CONVERSA = [
 
 const LOCALIZAR = /\b(onde|cad[eê]|em que arquivo|qual arquivo|quais arquivos|que arquivo|localiza|where)\b/i;
 
-/**
- * "Stemmer" mínimo para português: corta sufixos comuns para que variações
- * da mesma palavra virem a mesma raiz.
- *   autenticação, autenticar -> autentic     modais -> modal
- * Não é linguística de verdade, só o suficiente para casar a pergunta com o código.
- * @param {string} palavra
- */
+// stemmer simples de português, só para juntar plural, gênero e -ção/-mento
 export function raiz(palavra) {
   const t = palavra
     .normalize("NFD")
@@ -176,21 +176,16 @@ export function raiz(palavra) {
     .toLowerCase();
   // prettier-ignore
   const sufixos = ["amentos", "imentos", "amento", "imento", "acoes", "icoes", "acao", "icao", "coes", "cao", "mente", "idades", "idade", "ados", "adas", "idos", "idas", "ado", "ada", "ido", "ida", "ais", "oes", "ao", "ar", "er", "ir", "es", "s"];
-  if (t.length >= 6 && t.endsWith("ais")) return t.slice(0, -3) + "al"; // modais -> modal
+  if (t.length >= 6 && t.endsWith("ais")) return t.slice(0, -3) + "al";
   for (const s of sufixos) {
     if (s !== "ais" && t.length - s.length >= 4 && t.endsWith(s)) return t.slice(0, -s.length);
   }
   return t;
 }
 
-/**
- * @param {string} texto a pergunta
- * @param {string[]} [termosExtras] termos sugeridos pelo LLM (reescrita da consulta)
- * @returns {Consulta}
- */
+// Pergunta -> intenção (conversa, localizar, explicar) e conceitos com sinônimos do código.
 export function analisarConsulta(texto, termosExtras = []) {
   const palavras = (texto.match(/[A-Za-zÀ-ÿ_$][A-Za-zÀ-ÿ0-9_$-]*/g) ?? []).map((p) => p.replace(/^e-?mail$/i, "email"));
-  /** @type {Conceito[]} */
   const conceitos = [];
   const vistos = new Set();
   for (const p of palavras) {
@@ -202,7 +197,6 @@ export function analisarConsulta(texto, termosExtras = []) {
     const r = raiz(norm);
     if (vistos.has(r)) continue;
     vistos.add(r);
-    // Identificadores no texto (verifyToken, auth_guard) também viram suas partes.
     const partes = tokenizar(p).map(raiz);
     const traducoes = Object.entries(GLOSSARIO)
       .filter(([k]) => r === k || (r.length >= 4 && r.startsWith(k) && k.length >= 4))
@@ -216,8 +210,6 @@ export function analisarConsulta(texto, termosExtras = []) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
   const conversa = CONVERSA.some((re) => re.test(semAcento)) && conceitos.every((c) => ehPalavraDeConversa(c.palavra));
-  // Sem nenhuma palavra de conteúdo ("e aí?", "?") também não há o que buscar.
-  /** @type {Intencao} */
   const intencao = conversa || conceitos.length === 0 ? "conversa" : LOCALIZAR.test(texto) ? "localizar" : "explicar";
   return {
     original: texto,
@@ -227,18 +219,13 @@ export function analisarConsulta(texto, termosExtras = []) {
   };
 }
 
-// "Oi, tudo bem?" não tem conceito de código; "Oi, onde fica o login?" tem.
 const VOCAB_CONVERSA =
   /^(oi+|ola|eai|opa|hey|hello|hi|salve|fala|bom|boa|dia|tarde|noite|tudo|bem|certo|vai|beleza|obrigad[oa]|valeu|vlw|brigad[oa]|thanks|thank|you|agradeco|tchau|ate|logo|falou|bye|quem|sabe|consegue|ajuda|help|funciona|tranquilo|show|legal|top|ok|okay|blz|kkk+|haha+)$/i;
 
-/** @param {string} p */
 function ehPalavraDeConversa(p) {
   return VOCAB_CONVERSA.test(p.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
 }
 
-// Um conceito está presente se alguma raiz do texto começa com algum dos seus termos
-// (termos curtos, como "db", exigem igualdade para não casar por acaso).
-/** @param {Conceito} conceito @param {string[]} raizes */
 export function cobre(conceito, raizes) {
   for (const t of conceito.termos) {
     for (const r of raizes) {

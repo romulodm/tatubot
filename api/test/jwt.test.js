@@ -1,22 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, generateKeyPairSync, sign } from "node:crypto";
-import { verificarJwt, lerCookies } from "../src/http/auth.js";
-import { registrarChave } from "../src/http/jwks.js";
+import { lerCookies, registrarChave, verificarJwt } from "../src/auth.js";
 
-// Os testes geram um par RSA na hora e registram a chave pública como se ela
-// tivesse vindo do JWKS do web. Assim dá para testar a verificação sem subir nada.
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 registrarChave("chave-teste", publicKey);
 
-const b64 = (/** @type {object} */ o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const agora = () => Math.floor(Date.now() / 1000);
 
-/**
- * Monta um JWT à mão, do mesmo jeito que o jose faz no web.
- * @param {object} claims
- * @param {object} [cab]
- */
 function token(claims, cab = { alg: "RS256", typ: "JWT", kid: "chave-teste" }) {
   const base = `${b64(cab)}.${b64(claims)}`;
   return `${base}.${sign("RSA-SHA256", Buffer.from(base), privateKey).toString("base64url")}`;

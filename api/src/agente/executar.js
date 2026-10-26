@@ -1,70 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { config } from "../config.js";
+import { config, log } from "../config.js";
 import { db, agora } from "../db.js";
 import { ErroPermanente } from "../erros.js";
-import { log } from "../log.js";
+import { chat, estimarTokens, llmDisponivel } from "../llm.js";
 import { buscar } from "../busca/buscar.js";
 import { analisarConsulta } from "../busca/consulta.js";
-import { promptConversa, respostaConversaLocal } from "./conversa.js";
-import { fraseDoAssunto, respostaExtrativa } from "./extrativo.js";
-import { chat, estimarTokens, llmDisponivel } from "../llm/chat.js";
-import { validarCitacoes } from "./citacoes.js";
+import { fraseDoAssunto, respostaExtrativa, validarCitacoes } from "./citacoes.js";
 import { definicoes, executarFerramenta } from "./ferramentas.js";
-import { blocoTrechos, promptSistema } from "./prompts.js";
+import { blocoTrechos, promptConversa, promptSistema, respostaConversaLocal } from "./prompts.js";
 
-// Runtime do bot: o que acontece entre "mensagem.recebida" e a resposta pronta.
-//
-//   pergunta ─► roteador de intenção ─┬─ conversa ("oi") ─► resposta curta, sem busca
-//                                     └─ código ─┬─ extrativo (sem LLM)
-//                                                ├─ pipeline  (busca fixa + 1 chamada ao LLM)
-//                                                └─ agente    (LLM com ferramentas, em loop)
-//                                                      │
-//                                     validação de citações ◄┘
-//
-// Enquanto trabalha, o bot grava a "trilha" (o que está fazendo) e o texto
-// parcial na própria mensagem. O SSE da API lê essas mudanças e manda ao
-// navegador. Detalhes em docs/rag/06-resposta-e-citacoes.md.
-
-/**
- * O payload do evento traz tudo de que o runtime precisa (bot, histórico,
- * repositórios permitidos): o runtime não consulta bots nem conversas.
- * @typedef {object} PayloadMensagem
- * @property {string} mensagemId mensagem do BOT (pendente) que esta execução preenche
- * @property {string} conversaId
- * @property {string} usuarioId
- * @property {{ id: string, nome: string, instrucoes: string, modo: import("../tipos.js").ModoBot }} bot
- * @property {string[]} repoIds
- * @property {{ autor: "usuario" | "bot", conteudo: string }[]} historico
- * @property {string} conteudo a pergunta
- */
-
-/** @typedef {import("./citacoes.js").Fonte} Fonte */
-/** @typedef {import("../llm/chat.js").MensagemChat} MensagemChat */
-
-/**
- * @param {PayloadMensagem} p
- * @param {string} correlationId
- */
 export async function responder(p, correlationId) {
   const d = await db();
   const msgs = d.collection("mensagens");
-  const msg = await msgs.findOne({ _id: /** @type {any} */ (p.mensagemId) });
-  if (!msg || msg.status === "concluida") return; // conversa apagada ou já respondida
+  const msg = await msgs.findOne({ _id: p.mensagemId });
+  if (!msg || msg.status === "concluida") return;
 
-  // Autorização de novo, aqui dentro: só repositórios do mesmo dono.
-  // A API já conferiu ao vincular, mas um repo pode ter mudado de dono ou
-  // sumido entre a publicação do evento e agora.
   const filtroRepos = { _id: { $in: p.repoIds }, ownerId: p.usuarioId };
-  const repos = /** @type {import("../tipos.js").Repositorio[]} */ (
-    /** @type {unknown} */ (
-      await d
-        .collection("repositorios")
-        .find(/** @type {any} */ (filtroRepos))
-        .toArray()
-    )
-  );
+  const repos = await d.collection("repositorios").find(filtroRepos).toArray();
 
-  /** @type {import("../tipos.js").Execucao} */
   const exec = {
     _id: randomUUID(),
     mensagemId: p.mensagemId,
@@ -80,27 +33,31 @@ export async function responder(p, correlationId) {
     finalizadoEm: null,
     erro: null,
   };
-  await d.collection("execucoes").insertOne(/** @type {any} */ (exec));
-  await msgs.updateOne({ _id: p.mensagemId }, { $set: { status: "processando", execucaoId: exec._id, conteudo: "", trilha: [], atualizadoEm: agora() } });
+  await d.collection("execucoes").insertOne(exec);
+  await msgs.updateOne(
+    { _id: p.mensagemId },
+    { $set: { status: "processando", execucaoId: exec._id, conteudo: "", trilha: [], atualizadoEm: agora() } },
+  );
 
-  // Cada passo da trilha aparece ao vivo no chat ("Lendo src/auth.ts L10-L40").
-  const trilha = async (/** @type {string} */ descricao) => {
+  const trilha = async (descricao) => {
     await msgs.updateOne({ _id: p.mensagemId }, { $push: { trilha: { descricao, em: agora() } }, $set: { atualizadoEm: agora() } });
   };
 
-  /**
-   * Registra um passo na execução (vai para "ver o raciocínio").
-   * @param {import("../tipos.js").PassoExecucao["tipo"]} tipo @param {string | null} ferramenta
-   * @param {unknown} entrada @param {string} saidaResumo @param {number} inicio
-   */
   const passo = (tipo, ferramenta, entrada, saidaResumo, inicio) => {
-    exec.passos.push({ ordem: exec.passos.length + 1, tipo, ferramenta, entrada, saidaResumo: saidaResumo.slice(0, 500), duracaoMs: Date.now() - inicio });
+    exec.passos.push({
+      ordem: exec.passos.length + 1,
+      tipo,
+      ferramenta,
+      entrada,
+      saidaResumo: saidaResumo.slice(0, 500),
+      duracaoMs: Date.now() - inicio,
+    });
   };
 
-  // Streaming: tokens chegam muito rápido; gravamos o parcial no máximo a cada 250 ms.
+  // texto parcial gravado no máximo a cada 250 ms; o SSE leva para o navegador
   let parcial = "";
   let ultimoFlush = 0;
-  const aoToken = (/** @type {string} */ t) => {
+  const aoToken = (t) => {
     parcial += t;
     if (Date.now() - ultimoFlush > 250) {
       ultimoFlush = Date.now();
@@ -108,7 +65,6 @@ export async function responder(p, correlationId) {
     }
   };
 
-  // Roteamento: conversa ("oi", "valeu") não dispara busca nenhuma.
   const nomesRepos = repos.map((r) => `${r.ghOwner}/${r.ghNome}`);
   const anterior = [...p.historico].reverse().find((h) => h.autor === "usuario")?.conteudo ?? "";
   let consulta = analisarConsulta(p.conteudo);
@@ -116,8 +72,11 @@ export async function responder(p, correlationId) {
     await responderConversa();
     return;
   }
-  // Pergunta de continuação ("e quem chama essa função?") herda o assunto da anterior.
-  if (anterior && /\b(ele|ela|isso|esse|essa|este|esta|dele|dela|nele|nela|disso|desse|dessa|deste|desta|mesmo|mesma|la|ali)\b/i.test(p.conteudo)) {
+  // continuação ("e onde ele é chamado?") herda o assunto da pergunta anterior
+  if (
+    anterior &&
+    /\b(ele|ela|isso|esse|essa|este|esta|dele|dela|nele|nela|disso|desse|dessa|deste|desta|mesmo|mesma|la|ali)\b/i.test(p.conteudo)
+  ) {
     consulta = analisarConsulta(`${anterior} ${p.conteudo}`);
   }
 
@@ -135,22 +94,17 @@ export async function responder(p, correlationId) {
     return;
   }
 
-  /** @type {string} */
   let texto;
-  /** @type {Fonte[]} */
   let fontes;
   if (exec.modo === "extrativo") ({ texto, fontes } = await modoExtrativo());
   else if (exec.modo === "pipeline") ({ texto, fontes } = await modoPipeline());
   else ({ texto, fontes } = await modoAgente());
 
+  // citação para linha que o bot não leu é removida antes de salvar
   const v = validarCitacoes(texto, fontes);
   exec.citacoesRemovidas = v.removidas;
   if (v.removidas.length) await trilha(`Removi ${v.removidas.length} citação(ões) para linhas que não li`);
   await finalizar(v.texto, v.citacoes, v.removidas);
-
-  // ---------- modos ----------
-  // Funções internas (closures): enxergam p, exec, trilha e passo sem precisar
-  // passar tudo como parâmetro.
 
   async function responderConversa() {
     passo("llm", "roteador", { intencao: "conversa" }, "mensagem sem pergunta sobre o código; sem busca", Date.now());
@@ -160,17 +114,18 @@ export async function responder(p, correlationId) {
       return;
     }
     const t0 = Date.now();
-    /** @type {MensagemChat[]} */
-    const mensagens = [{ role: "system", content: promptConversa(p.bot, nomesRepos) }, ...historico(), { role: "user", content: p.conteudo }];
+    const mensagens = [
+      { role: "system", content: promptConversa(p.bot, nomesRepos) },
+      ...historico(),
+      { role: "user", content: p.conteudo },
+    ];
     const r = await chat({ mensagens, aoToken, maxTokens: 300 });
     contar(r.uso, mensagens, r.conteudo);
     passo("llm", null, { conversa: true }, r.conteudo, t0);
-    // Sem fontes: qualquer citação que o modelo inventar é removida.
     const v = validarCitacoes(r.conteudo, []);
     await finalizar(v.texto, [], v.removidas);
   }
 
-  // Sem LLM: busca e devolve os trechos agrupados por arquivo.
   async function modoExtrativo() {
     await trilha(`Buscando ${fraseDoAssunto(consulta)}`);
     const t0 = Date.now();
@@ -181,13 +136,9 @@ export async function responder(p, correlationId) {
     return { texto: respostaExtrativa(saida, primeira), fontes: fontesDe(saida.resultados) };
   }
 
-  // Pipeline (RAG clássico): busca uma vez, monta o prompt com os trechos e
-  // pede UMA resposta ao modelo. Rápido e previsível.
   async function modoPipeline() {
     await trilha(`Buscando ${fraseDoAssunto(consulta)}`);
     let t0 = Date.now();
-    // Passo 1 (opcional no context.md): o LLM traduz a pergunta em termos
-    // prováveis do código. Ajuda muito quando a pergunta é em português e o código em inglês.
     const termos = await reescreverConsulta(p.conteudo, anterior);
     if (termos) await trilha(`Procurando por ${termos.split(" ").slice(0, 6).join(", ")}`);
     const comExtras = analisarConsulta(consulta.original, termos ? termos.split(" ") : []);
@@ -206,7 +157,6 @@ export async function responder(p, correlationId) {
       consulta.intencao === "localizar"
         ? "A pessoa quer saber ONDE está: responda com a lista de arquivos relevantes e o papel de cada um, em uma linha cada."
         : "Explique o que o código faz, citando as linhas.";
-    /** @type {MensagemChat[]} */
     const mensagens = [
       { role: "system", content: promptSistema(p.bot, "pipeline", nomesRepos) },
       ...historico(),
@@ -223,23 +173,24 @@ export async function responder(p, correlationId) {
     return { texto: r.conteudo, fontes: fontesDe(resultados) };
   }
 
-  // Agente: o modelo decide o que fazer. A cada volta ele pode pedir
-  // ferramentas (buscar, ler arquivo, ver referências); executamos, devolvemos
-  // o resultado e perguntamos de novo, até ele responder sem pedir nada.
-  // Limites de passos, tokens e tempo evitam um loop caro e infinito.
   async function modoAgente() {
-    /** @type {Fonte[]} */
     const fontes = [];
     const inicio = Date.now();
-    /** @type {MensagemChat[]} */
-    const mensagens = [{ role: "system", content: promptSistema(p.bot, "agente", nomesRepos) }, ...historico(), { role: "user", content: p.conteudo }];
+    const mensagens = [
+      { role: "system", content: promptSistema(p.bot, "agente", nomesRepos) },
+      ...historico(),
+      { role: "user", content: p.conteudo },
+    ];
     const ctx = { repos: repos.filter((r) => r.status === "pronto") };
 
     for (let i = 0; i < config.limites.agentePassos; i++) {
       const estourou = exec.tokensEntrada > config.limites.agenteTokensEntrada || Date.now() - inicio > config.limites.agenteTempoMs;
       if (estourou || i === config.limites.agentePassos - 1) {
         await trilha("Limite de exploração atingido, respondendo com o que já tenho");
-        mensagens.push({ role: "user", content: "Limite de passos atingido. Responda agora, apenas com o que você já leu, citando as linhas." });
+        mensagens.push({
+          role: "user",
+          content: "Limite de passos atingido. Responda agora, apenas com o que você já leu, citando as linhas.",
+        });
         const r = await chat({ mensagens, aoToken, maxTokens: 1500 });
         contar(r.uso, mensagens, r.conteudo);
         return { texto: r.conteudo, fontes };
@@ -251,7 +202,6 @@ export async function responder(p, correlationId) {
       passo("llm", null, { passo: i + 1 }, r.chamadas.length ? `pediu ${r.chamadas.map((c) => c.nome).join(", ")}` : "resposta final", t0);
 
       if (!r.chamadas.length) {
-        // Resposta final já veio completa; publicamos de uma vez.
         return { texto: r.conteudo, fontes };
       }
       mensagens.push({ role: "assistant", content: r.conteudo || null, tool_calls: r.chamadas.map((c) => c.bruto) });
@@ -267,11 +217,6 @@ export async function responder(p, correlationId) {
     return { texto: "Não consegui concluir a investigação.", fontes };
   }
 
-  /**
-   * Reescrita da consulta: o LLM sugere identificadores prováveis no código
-   * ("login com Google" -> "signInWithGoogle oauth GoogleProvider").
-   * @param {string} pergunta @param {string} anterior
-   */
   async function reescreverConsulta(pergunta, anterior) {
     const t0 = Date.now();
     try {
@@ -282,7 +227,10 @@ export async function responder(p, correlationId) {
             content:
               "Você gera termos de busca para encontrar código. Responda SOMENTE com até 10 termos separados por espaço: identificadores prováveis (em inglês, camelCase ou snake_case), nomes de arquivos e palavras-chave técnicas. Nada mais.",
           },
-          { role: "user", content: `${anterior ? `Contexto anterior: ${anterior.slice(0, 300)}\n` : ""}Pergunta: ${pergunta.slice(0, 600)}` },
+          {
+            role: "user",
+            content: `${anterior ? `Contexto anterior: ${anterior.slice(0, 300)}\n` : ""}Pergunta: ${pergunta.slice(0, 600)}`,
+          },
         ],
         maxTokens: 60,
       });
@@ -296,24 +244,19 @@ export async function responder(p, correlationId) {
       passo("llm", "reescrever_consulta", { pergunta }, termos, t0);
       return termos;
     } catch {
-      return ""; // reescrita é otimização; sem ela a busca segue com a pergunta original
+      return "";
     }
   }
 
-  // ---------- utilidades ----------
-
-  /** Últimas 10 mensagens da conversa, cortadas para não estourar o contexto. @returns {MensagemChat[]} */
   function historico() {
     return p.historico.slice(-10).map((h) => ({ role: h.autor === "usuario" ? "user" : "assistant", content: h.conteudo.slice(0, 4000) }));
   }
 
-  /** @param {{ entrada: number, saida: number }} uso @param {MensagemChat[]} mensagens @param {string} saida */
   function contar(uso, mensagens, saida) {
     exec.tokensEntrada += uso.entrada || mensagens.reduce((s, m) => s + estimarTokens(String("content" in m ? (m.content ?? "") : "")), 0);
     exec.tokensSaida += uso.saida || estimarTokens(saida);
   }
 
-  /** @param {string} conteudo @param {Fonte[]} citacoes @param {string[]} removidas */
   async function finalizar(conteudo, citacoes, removidas) {
     await msgs.updateOne({ _id: p.mensagemId }, { $set: { conteudo, citacoes, status: "concluida", erro: null, atualizadoEm: agora() } });
     await d.collection("execucoes").updateOne(
@@ -341,22 +284,18 @@ export async function responder(p, correlationId) {
   }
 }
 
-/**
- * Chamado quando o evento vai para a DLQ: a mensagem sai de "processando"
- * e o usuário vê o erro, em vez de um "digitando..." eterno.
- * @param {PayloadMensagem} p
- * @param {Error} erro
- */
 export async function falhar(p, erro) {
   const d = await db();
-  const msg = erro instanceof ErroPermanente ? erro.message : "Não consegui responder agora (o modelo ou a busca falharam). Tente de novo em instantes.";
+  const msg =
+    erro instanceof ErroPermanente
+      ? erro.message
+      : "Não consegui responder agora (o modelo ou a busca falharam). Tente de novo em instantes.";
   await d.collection("mensagens").updateOne({ _id: p.mensagemId }, { $set: { status: "falhou", erro: msg, atualizadoEm: agora() } });
   await d
     .collection("execucoes")
     .updateMany({ mensagemId: p.mensagemId, status: "rodando" }, { $set: { status: "falhou", erro: erro.message, finalizadoEm: agora() } });
 }
 
-/** @param {import("../busca/buscar.js").Resultado[]} resultados @returns {Fonte[]} */
 function fontesDe(resultados) {
   return resultados.map((r) => ({
     repoId: r.chunk.repoId,
@@ -369,11 +308,10 @@ function fontesDe(resultados) {
   }));
 }
 
-/** @param {import("../busca/buscar.js").Resultado[]} rs */
 function descreverAchados(rs) {
   if (!rs.length) return "Não encontrei trechos relacionados";
   const arquivos = new Set(rs.map((r) => r.chunk.path));
   return `Encontrei ${rs.length} trechos em ${arquivos.size} arquivo${arquivos.size > 1 ? "s" : ""}`;
 }
 
-const capitalizar = (/** @type {string} */ s) => s.charAt(0).toUpperCase() + s.slice(1);
+const capitalizar = (s) => s.charAt(0).toUpperCase() + s.slice(1);

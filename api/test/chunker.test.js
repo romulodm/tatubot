@@ -39,7 +39,7 @@ export const handler = async (req: Request) => {
 
 describe("chunker por AST", () => {
   const chunks = quebrarEmChunks("src/auth/jwt.ts", codigo);
-  const porSimbolo = (/** @type {string} */ s) => chunks.find((c) => c.simbolo === s);
+  const porSimbolo = (s) => chunks.find((c) => c.simbolo === s);
 
   it("cria um chunk por função, classe e método", () => {
     assert.equal(porSimbolo("verificarToken")?.tipo, "funcao");
@@ -73,7 +73,7 @@ describe("chunker por AST", () => {
   it("subdivide funções longas com overlap", () => {
     const partes = fatiar(1, 300);
     assert.equal(partes.length, 3);
-    assert.equal(partes[1].a, 106); // 120 - 15 de overlap
+    assert.equal(partes[1].a, 106);
     assert.equal(partes.at(-1)?.b, 300);
   });
 });

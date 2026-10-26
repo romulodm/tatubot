@@ -1,11 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Roteador } from "../src/http/roteador.js";
+import { Roteador } from "../src/http.js";
 
 const nada = async () => null;
 
 describe("roteador", () => {
-  const r = new Roteador().get("/api/repos", nada).get("/api/repos/:id", nada).delete("/api/repos/:id", nada).post("/api/repos/:id/busca", nada);
+  const r = new Roteador()
+    .get("/api/repos", nada)
+    .get("/api/repos/:id", nada)
+    .delete("/api/repos/:id", nada)
+    .post("/api/repos/:id/busca", nada);
 
   it("casa caminho com parâmetros", () => {
     const a = r.encontrar("GET", "/api/repos/123");

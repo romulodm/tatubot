@@ -2,7 +2,7 @@
   "name": "tatubot-api",
   "version": "0.2.0",
   "private": true,
-  "description": "Microsserviço do tatubot: repositórios, bots, conversas, indexação e runtime do bot (RAG).",
+  "description": "Microsserviço do tatubot: repositórios, bots, conversas, fila, indexação e RAG.",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
